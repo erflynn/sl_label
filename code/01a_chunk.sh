@@ -16,7 +16,7 @@ i=$SLURM_ARRAY_TASK_ID
 # get the chunk start/end
 ncol=$(awk 'NR==3{print NF}' "$infile")
 nrow=$(awk 'END{print NR}' "$infile")
-start=$((inc*i+2))
+start=$((inc*i+1))
 end=$((inc*(i+1)+1))
 if [ "$end" -gt "$ncol" ]; then
     end=$ncol;
@@ -29,7 +29,7 @@ cut -f1,$start-$end "$infile" > "${infile}.$i";
 
 echo "CUT";
 
-my_col=$((end-start))
+my_col=$((end-start-1))
 my_row=$((nrow-1))
 head -1 ${infile}.$i | awk '{printf "GID%s\n", $0}' > ${prefix}_tmp_${i}.txt;
 cat <(echo -e "#1.2\n${my_row}\t${my_col}") ${prefix}_tmp_${i}.txt > ${prefix}_cols_${i}.txt;

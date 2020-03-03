@@ -17,8 +17,7 @@ xy_genes <- ref_dat %>%
 
 gene_names <- my_ds@rid
 overlap.genes <- intersect(gene_names,xy_genes$ensembl_gene_id)
-# // TODO write these out and save them
-#rownames(my_dat) <- gene_names
+
 my_mat <- my_ds@mat
 my_dat <- my_mat[overlap.genes,]
 

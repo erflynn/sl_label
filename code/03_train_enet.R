@@ -24,6 +24,8 @@ xy_genes <- ref_dat %>%
   filter(chromosome_name %in% c("X", "Y")) %>% 
   select(chromosome_name, ensembl_gene_id) %>% 
   unique()
+gene.df <- data.frame(overlap.genes) 
+write_csv(gene.df, sprintf("data/%s/04_sl_input/xy_genes.csv", prefix))
 
 gene_names <- expr_f$rid
 overlap.genes <- intersect(gene_names,xy_genes$ensembl_gene_id)
@@ -60,11 +62,11 @@ x_test <- apply(x_test, c(1,2),as.numeric)
 cvfit = cv.glmnet(x_train, train_sex_lab, family="binomial", alpha=0.5)
 preds_train <- predict(cvfit, newx=x_train, s="lambda.min", type="response")
 preds_class_train <- sapply(predict(cvfit, newx=x_train, s="lambda.min", type="class"), as.numeric)
-sum(preds_class_train==train_sex_lab)/length(train_sex_lab) # 96.4%
+sum(preds_class_train==train_sex_lab)/length(train_sex_lab) # 96.4%, rat: 98.5%
 
 preds_test <- predict(cvfit, newx=x_test, s="lambda.min", type="response")
 preds_class_test <- sapply(predict(cvfit, newx=x_test, s="lambda.min", type="class"), as.numeric)
-sum(preds_class_test==test_sex_lab)/length(test_sex_lab) # 95.5%
+sum(preds_class_test==test_sex_lab)/length(test_sex_lab) # rat, human, 95.5%
 
 mat_coef <- coef(cvfit, lambda="lambda.min") %>% as.matrix()
 nonzero_coef <- mat_coef[mat_coef[,1]!=0,]

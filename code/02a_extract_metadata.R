@@ -10,7 +10,7 @@ args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
 
 # ----- 0. grab metadata ------ #
-metadata_list <- fromJSON(file = sprintf("data/%s/01_input_data/aggregated_metadata.json", prefix))
+metadata_list <- fromJSON(file = sprintf("data/%s/01_input/aggregated_metadata.json", prefix))
 
 list.feat <-
   lapply(metadata_list$samples, function(x)
@@ -19,12 +19,12 @@ list.feat <-
          "cl_line"=x$refinebio_cell_line,
          "compound"=x$refinebio_compound,
          "disease"=x$refinebio_disease,
-         "age"=x$refinedbio_age,
+         "age"=x$refinebio_age,
          "trt"=x$refinebio_treatment))
 
 feat.df <- do.call(rbind, list.feat)
 feat.df2 <- apply(feat.df , c(1,2), function(x) unlist(paste(x, sep=";")))
-feat.df3 <- data.frame(feat.df2)
+feat.df3 <- data.frame(feat.df2, stringsAsFactors = FALSE)
 
 sex.counts <- table(feat.df3$sex)
 # //TODO: this table is horrendous and needs to be reformatted
@@ -71,7 +71,8 @@ ale4 %>% filter(ale_sex=="female" & rb_sex=="male")
 # -----  create a training list ----- #
 
 # label columns by file + filter for cols actually present
-m_cols <- fread(sprintf("data/%s/02_sample_lists/%s_cols.txt",prefix, prefix), data.table=FALSE)
+m_cols <- fread(sprintf("data/%s/02_sample_lists/%s_cols.txt",prefix, prefix), 
+                data.table=FALSE, stringsAsFactors = FALSE)
 m_to_idx <- data.frame(t(m_cols))
 colnames(m_to_idx) <- c("col_name")
 rownames(m_to_idx) <- NULL
@@ -98,5 +99,20 @@ m_sample %>% write_csv(sprintf("data/%s/02_sample_lists/%s_m_sample.csv", prefix
 
 feat.df3 %>% 
   inner_join(m_to_idx, by=c("acc"="col_name")) %>%
-  write_csv(sprintf("data/%s/02_sample_lists/%s_metadata.csv", prefix, prefix))
+  write.csv(file=sprintf("data/%s/02_sample_lists/%s_metadata.csv", prefix, prefix), quote=TRUE, row.names=FALSE)
 
+
+# ---------- grab study to sample mapping ---------- #
+metadata_list <- fromJSON(file = sprintf("data/%s/01_input/aggregated_metadata.json", prefix))
+
+list.exp <-
+  lapply(metadata_list$experiments, function(x)
+    list("study_acc"=unlist(x$accession_code),
+         "sample_acc"=paste(x$sample_accession_codes, collapse=";")))
+
+exp.df <- do.call(rbind, list.exp)
+exp.df2 <- apply(exp.df , c(1,2), function(x) unlist(x))
+
+mapping <- exp.df2 %>% as.data.frame() %>% separate_rows(sample_acc, sep=";")
+mapping %>% write.csv(sprintf("data/%s/02_sample_lists/%s_exp_to_sample.csv", prefix, prefix), quote=TRUE, row.names=FALSE)
+  
