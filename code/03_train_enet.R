@@ -14,9 +14,9 @@ sex_lab_m$V1 <- NULL
 
 expr_f <- fread(sprintf("data/%s/04_sl_input/%s_f_expr.csv", prefix, prefix ), data.table=FALSE)
 expr_m <- fread(sprintf("data/%s/04_sl_input/%s_m_expr.csv", prefix, prefix ), data.table=FALSE)
+expr_f2 <- expr_f #[,sex_lab_f$acc]
+expr_m2 <- expr_m #[,sex_lab_m$acc]
 
-table(colnames(expr_f[,2:1001])==sex_lab_f$acc)
-table(colnames(expr_m[,2:1001])==sex_lab_m$acc)
 
 # make sure the data are ok
 load(sprintf("../sex_labeling/geo_pipeline/gpl_ref/%s_gene_map.RData", prefix))
@@ -29,21 +29,21 @@ write_csv(gene.df, sprintf("data/%s/04_sl_input/xy_genes.csv", prefix))
 
 gene_names <- expr_f$rid
 overlap.genes <- intersect(gene_names,xy_genes$ensembl_gene_id)
-rownames(expr_f) <- gene_names
-expr_f <- expr_f[overlap.genes,]
-rownames(expr_m) <- gene_names
-expr_m <- expr_m[overlap.genes,]
+rownames(expr_f2) <- gene_names
+expr_f2 <- expr_f2[overlap.genes,]
+rownames(expr_m2) <- gene_names
+expr_m2 <- expr_m2[overlap.genes,]
 
 # train/test
 set.seed(301)
 sample_f <- sample(1:1000, 700, replace=FALSE)
 sample_m <- sample(1:1000, 700, replace=FALSE)
 
-expr_f_train <- (expr_f %>% select(-rid))[,sample_f]
-expr_m_train <- (expr_m %>% select(-rid))[,sample_m]
+expr_f_train <- as.matrix((expr_f2 %>% dplyr::select(-rid)))[,sample_f]
+expr_m_train <- as.matrix((expr_m2 %>% dplyr::select(-rid)))[,sample_m]
 
-expr_f_test <- (expr_f %>% select(-rid))[,-sample_f]
-expr_m_test <- (expr_m %>% select(-rid))[,-sample_m]
+expr_f_test <- as.matrix((expr_f2 %>% dplyr::select(-rid)))[,-sample_f]
+expr_m_test <-  as.matrix((expr_m2 %>% dplyr::select(-rid)))[,-sample_m]
 
 
 expr_train <- cbind(expr_f_train, expr_m_train)
@@ -62,11 +62,11 @@ x_test <- apply(x_test, c(1,2),as.numeric)
 cvfit = cv.glmnet(x_train, train_sex_lab, family="binomial", alpha=0.5)
 preds_train <- predict(cvfit, newx=x_train, s="lambda.min", type="response")
 preds_class_train <- sapply(predict(cvfit, newx=x_train, s="lambda.min", type="class"), as.numeric)
-sum(preds_class_train==train_sex_lab)/length(train_sex_lab) # 96.4%, rat: 98.5%
+sum(preds_class_train==train_sex_lab)/length(train_sex_lab) # mouse: 96.1% rat: 98.6%, human: 95.6%
 
 preds_test <- predict(cvfit, newx=x_test, s="lambda.min", type="response")
 preds_class_test <- sapply(predict(cvfit, newx=x_test, s="lambda.min", type="class"), as.numeric)
-sum(preds_class_test==test_sex_lab)/length(test_sex_lab) # rat, human, 95.5%
+sum(preds_class_test==test_sex_lab)/length(test_sex_lab) # mouse: 95.7%, rat: 95.5%, human: 95.2%
 
 mat_coef <- coef(cvfit, lambda="lambda.min") %>% as.matrix()
 nonzero_coef <- mat_coef[mat_coef[,1]!=0,]
