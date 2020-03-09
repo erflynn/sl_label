@@ -10,5 +10,6 @@
 
 #wget https://data-refinery-s3-compendia-circleci-prod.s3.amazonaws.com/kfc8oetnjca248dx4lpr805a_ac0d90a1-25c0-4617-838f-212bede63702_compendia.zip
 
-cd humans/
-unzip human_compendia.zip
+#cd humans/
+#unzip human_compendia.zip
+wget https://data-refinery-s3-compendia-circleci-prod.s3.amazonaws.com/HOMO_SAPIENS_1_1574170428.zip

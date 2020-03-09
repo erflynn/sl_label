@@ -14,29 +14,35 @@ infile=args.infile
 out_prefix=args.outfile
 
 sample_list = pd.read_csv(infile)
-sample_sm = sample_list[['acc', 'sex', 'f_idx']]
+#sample_sm = sample_list
+#sample_sm = sample_list[['acc', 'sex', 'f_idx']]
+sample_sm = sample_list[['acc', 'f_idx', 'idx']]
 list_idx = sample_sm['f_idx'].unique()
 list_idx.sort()
-
+#print(sample_sm.dtypes)
 # iterate through
 
 dfs = []
-sex_dfs = []
-for idx in list_idx:
-  idx_df = sample_sm[sample_sm['f_idx']==idx]
-  idx_df = idx_df.sort_values(by=['acc'])
+#list_idx =[0]
+#sex_dfs = []
+for i in list_idx:
+  idx_df = sample_sm[sample_sm['f_idx']==i]
+  #idx_df = idx_df.sort_values(by=['acc'])
+
   df_cols = idx_df['acc'].tolist()
-  df_sex = idx_df[['acc', 'sex']]
-  res=parse("data/%s/03_gctx/%s_%s.gctx" %(prefix, prefix, idx), cid=df_cols)
+  #print(idx_df.head())
+  #print(df_cols)
+  #df_sex = idx_df[['acc', 'sex']]
+  res=parse("data/%s/03_gctx/%s_%s.gctx" %(prefix, prefix, i), cid=df_cols)
   dfs.append(res.data_df)
-  sex_dfs.append(df_sex)
+  #sex_dfs.append(df_sex)
 
 # concat and write it out
 my_df = pd.concat(dfs, axis=1)
 my_df.to_csv("data/%s/04_sl_input/%s_expr.csv" %(prefix, out_prefix))
 
 # write out the sex labels
-sex_df = pd.concat(sex_dfs, axis=0)
-sex_df.to_csv("data/%s/04_sl_input/%s_sex_lab.csv" %(prefix,out_prefix))
+#sex_df = pd.concat(sex_dfs, axis=0)
+#sex_df.to_csv("data/%s/04_sl_input/%s_sex_lab.csv" %(prefix,out_prefix))
 
 
