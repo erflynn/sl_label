@@ -24,11 +24,12 @@ xy_genes <- ref_dat %>%
   filter(chromosome_name %in% c("X", "Y")) %>% 
   select(chromosome_name, ensembl_gene_id) %>% 
   unique()
-gene.df <- data.frame(overlap.genes) 
-write_csv(gene.df, sprintf("data/%s/04_sl_input/xy_genes.csv", prefix))
 
 gene_names <- expr_f$rid
 overlap.genes <- intersect(gene_names,xy_genes$ensembl_gene_id)
+gene.df <- data.frame(overlap.genes) 
+write_csv(gene.df, sprintf("data/%s/04_sl_input/xy_genes.csv", prefix))
+
 rownames(expr_f2) <- gene_names
 expr_f2 <- expr_f2[overlap.genes,]
 rownames(expr_m2) <- gene_names

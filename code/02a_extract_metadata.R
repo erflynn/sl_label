@@ -11,6 +11,13 @@ prefix <- args[1]
 
 # ----- 0. grab metadata ------ #
 metadata_list <- fromJSON(file = sprintf("data/%s/01_input/aggregated_metadata.json", prefix))
+# experiment:
+#   description, title, source_first_published, pubmed_id, technology, pubmed_id
+#  --PROBLEM: the source_first_published can be missing, and is for a lot of the DDBJ
+#metadata2 <- fromJSON(file="data/rat/01_input/RATTUS_NORVEGICUS/metadata_RATTUS_NORVEGICUS.json")
+# sample again - refinebio_data
+#metadata3 <- fread("data/rat/01_input/RATTUS_NORVEGICUS/metadata_RATTUS_NORVEGICUS.tsv", data.table=FALSE)
+#  35294 x 730 - includes a lot of treatment/review
 
 list.feat <-
   lapply(metadata_list$samples, function(x)
@@ -20,7 +27,11 @@ list.feat <-
          "compound"=x$refinebio_compound,
          "disease"=x$refinebio_disease,
          "age"=x$refinebio_age,
-         "trt"=x$refinebio_treatment))
+         "trt"=x$refinebio_treatment,
+         "part"=x$refinebio_specimen_part,
+         "src"=x$refinebio_source_database,
+         "title"=x$refinebio_title,
+         "platform"=x$refinebio_platform))
 
 feat.df <- do.call(rbind, list.feat)
 feat.df2 <- apply(feat.df , c(1,2), function(x) unlist(paste(x, sep=";")))
@@ -105,14 +116,35 @@ feat.df3 %>%
 # ---------- grab study to sample mapping ---------- #
 metadata_list <- fromJSON(file = sprintf("data/%s/01_input/aggregated_metadata.json", prefix))
 
+
 list.exp <-
   lapply(metadata_list$experiments, function(x)
     list("study_acc"=unlist(x$accession_code),
+         "title"=unlist(x$title),
+         "description"=unlist(x$description),
+         "date"=unlist(x$source_first_published),
          "sample_acc"=paste(x$sample_accession_codes, collapse=";")))
 
 exp.df <- do.call(rbind, list.exp)
 exp.df2 <- apply(exp.df , c(1,2), function(x) unlist(x))
 
-mapping <- exp.df2 %>% as.data.frame() %>% separate_rows(sample_acc, sep=";")
-mapping %>% write.csv(sprintf("data/%s/02_sample_lists/%s_exp_to_sample.csv", prefix, prefix), quote=TRUE, row.names=FALSE)
-  
+exp_data <- exp.df2 %>% 
+  as.data.frame() %>% 
+  select(-sample_acc)
+exp_data %>% 
+  write.csv(file=sprintf("data/%s/02_sample_lists/%s_experiment_metadata.csv", prefix, prefix), 
+            quote=TRUE, row.names=FALSE)
+
+
+# study to sample mapping 
+
+mapping <- exp.df2 %>% 
+  as.data.frame() %>% 
+  select(study_acc, sample_acc) %>%
+  separate_rows(sample_acc, sep=";") %>%
+  arrange(study_acc, sample_acc)
+mapping %>% 
+  write.csv(file=sprintf("data/%s/02_sample_lists/%s_exp_to_sample.csv", prefix, prefix), 
+            quote=TRUE, row.names=FALSE)
+
+
