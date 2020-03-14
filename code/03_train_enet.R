@@ -4,6 +4,7 @@ require('data.table')
 
 args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
+assay_type <- args[2]
 
 sex_lab_f <- fread(sprintf("data/%s/04_sl_input/%s_f_sex_lab.csv", prefix, prefix), 
                    data.table=FALSE, header=TRUE)

@@ -43,7 +43,7 @@ preds_class_train <- sapply(predict(cvfit, newx=x_train, s="lambda.1se", type="c
 sum(preds_class_train==train_cl_lab)/length(train_cl_lab) # 0.986
 preds_test <- predict(cvfit, newx=x_test, s="lambda.1se", type="response")
 preds_class_test <- sapply(predict(cvfit, newx=x_test, s="lambda.1se", type="class"), as.numeric)
-sum(preds_class_test==test_cl_lab)/length(test_cl_lab) # 0.944%
+sum(preds_class_test==test_cl_lab)/length(test_cl_lab) # 0.944
 mat_coef <- coef(cvfit, lambda="lambda.1se") %>% as.matrix()
 save(cvfit, file="data/cvfit_human_cl.RData")
 nonzero_coef <- mat_coef[mat_coef[,1]!=0,]
