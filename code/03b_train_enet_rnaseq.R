@@ -5,6 +5,9 @@ require('data.table')
 
 sl <- read_csv(sprintf("data/%s/02_sample_lists/%s_rnaseq_sex_lab.csv", 
                        prefix, prefix))
+
+# then filter for what *is* present
+
 set.seed(500)
 if (nrow(sl) > 2000){
   sl_sm <- sl[sample(1:nrow(sl), 2000),]
@@ -39,9 +42,9 @@ grab_samples <- function(study_id){
 #                     prefix, sl_sm$study_acc[[3]]), data.table=FALSE)
 # if they're all the same length
 sample_dat <- lapply(unique(sl_sm$study_acc), grab_samples)
-sample_dat2 <- sample_dat[!is.na(sample_dat)]
-row_lengths <- sapply(sample_dat2, nrow)
-if (all(row_lengths==row_lengths[1])){
+sample_dat2 <- sample_dat[!is.na(sample_dat) & !is.null(sample_dat)]
+row_lengths <- unlist(sapply(sample_dat2, nrow))
+if (all(row_lengths==row_lengths[[1]])){
   study_d1 <- data.frame(do.call(cbind, lapply(sample_dat2, function(df) 
     data.frame(df) %>% select(-gene_name))))
   sample_expr_df <- cbind(sample_dat2[[1]]$gene_name, study_d1)

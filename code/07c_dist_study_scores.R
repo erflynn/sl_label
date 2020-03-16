@@ -59,8 +59,10 @@ likely_mislabeled <-
 ggplot(mixed %>% semi_join(likely_mislabeled %>% select(study) %>% 
                              unique() %>% sample_n(10)),
                            aes(x=pred, y=0))+
-         geom_point(alpha=0.3, aes(col=factor(text_sex)))+
-         facet_grid(rows=vars(study), scales="free")
+         geom_point(alpha=0.3, aes(col=text_sex))+
+         facet_grid(rows=vars(study), scales="free") +xlab("P(male)")+
+  theme_bw()+ theme( panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank())
 
 
 ggplot(mixed %>% semi_join(mixed_stat %>% sample_n(10)), aes(x=pred, y=0))+
