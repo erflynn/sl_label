@@ -13,17 +13,8 @@ sl2 <- sl %>% filter(sample_acc %in% mapping3$sample_acc)
 sl3 <- sl2 %>% group_by(study_acc) %>% filter(n() >=5) %>% sample_n(5)
 sl3.2 <- sl2 %>% group_by(study_acc) %>% filter(n() <5) 
 sl4 <- rbind(sl3, sl3.2)
-#set.seed(500)
-#if (nrow(sl2) > 2000){
-#  sl_f <- sl2 %>% filter(sex=="female") %>% sample_n(1000)
-#  sl_m <- sl2 %>% filter(sex=="male") %>% sample_n(1000)
-#} else {
-#  sl_f <- sl2 %>% filter(sex=="female")
-#  sl_m <- sl2 %>% filter(sex=="male")
-#}
 
-sl4 <- sl_sm 
-#sl_sm <- rbind(sl_f, sl_m)
+sl_sm <- sl4
 
 grab_samples <- function(study_id){
   sample_list <- sl_sm %>% filter(study_acc==study_id)

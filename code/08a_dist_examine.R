@@ -2,7 +2,7 @@ require('data.table')
 require('tidyverse')
 require('ggdendro')
 require('gridExtra')
-
+require('Rtsne')
 res <- fread("data/cell_dist_mat.txt", data.table=FALSE)
 cell_lab <- read_csv("data/cell_line_no_trt.csv")
 cell_df <- read_csv("data/00_db_data/cell_syn_df.csv")
@@ -16,6 +16,8 @@ cell_lab2 <- cell_lab %>% left_join(cell_df %>% filter(is.na(as.numeric(cl))) %>
                                                          group_by(accession) %>% 
                                       top_n(-1, wt=numchar)  %>% select(accession, cl))
 
+
+
 # do some hierarchical clustering
 # may want to try this melt_dist(res)
 samp_id <- sample(1:ncol(res), 1000) %>% sort()
@@ -28,6 +30,17 @@ res3[upper.tri(res3)] <- res2[upper.tri(res2)]
 res3[lower.tri(res3)]  <- t(res2)[lower.tri(res2)]
 rownames(res3) <- cell_lab$acc[samp_id]
 colnames(res3) <- cell_lab$acc[samp_id]
+
+# tsne
+set.seed(1) # for reproducibility
+tsne <- Rtsne(res3, dims = 2, 
+              perplexity=100, 
+              verbose=TRUE, max_iter = 500, is_distance=TRUE)
+df <- data.frame(cbind(tsne$Y, cell_lab_sm$cl))
+colnames(df) <- c("x1", "x2", "cl")
+df2 <- df %>% mutate(x1=as.numeric(x1), x2=as.numeric(x2))
+ggplot(df2, aes(x=x1, y=x2))+geom_point(aes(col=factor(cl)))
+# I don't see automatic sep, but we probs need to do variable selection
 
 #dist_res <- as.dist(res)
 hclust_avg <- hclust(as.dist(res3), method="average")
