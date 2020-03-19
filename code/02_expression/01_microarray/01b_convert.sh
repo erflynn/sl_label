@@ -5,6 +5,8 @@
 #SBATCH --time=6:00:00 
 #SBATCH --mem=40000
 #SBATCH --partition=rbaltman
+#
+# Convert a gct file to gctx
 
 prefix=$1
 i=$SLURM_ARRAY_TASK_ID

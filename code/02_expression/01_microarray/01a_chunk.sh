@@ -5,6 +5,9 @@
 #SBATCH --time=6:00:00 
 #SBATCH --mem=40000
 #SBATCH --partition=rbaltman
+#
+# Grab a chunk of the input .tsv data and put it into a .gct file with the 
+# proper header setup.
 
 
 infile=$1
@@ -41,17 +44,3 @@ echo "header created"
 tail -n +2 ${infile}.$i > ${prefix}_${i}v2.gct;
 
 cat ${prefix}_cols_${i}.txt ${prefix}_${i}v2.gct > ${prefix}_${i}.gct;
-
-
-echo "abt to convert";
-# reformat
-
-/scratch/users/erflynn/applications/miniconda3/etc/profile.d/conda.sh;
-source activate cmappy;
-
-
-python3.7 ~/gct_to_gctx.py -f ${prefix}_${i}.gct;
-
-
-
-echo "converted!"

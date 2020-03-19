@@ -57,7 +57,8 @@ for (i in 1:num_chunks){
   }
 }
 
-save(all_df, file=sprintf("data/%s/04_sl_input/%s_rnaseq_sl_in2.RData", prefix, prefix))
+save(all_df, 
+     file=sprintf("data/%s/04_sl_input/%s_rnaseq_sl_in2.RData", prefix, prefix))
 
 
 
