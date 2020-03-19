@@ -10,18 +10,20 @@ sl <- read_csv(sprintf("data/%s/02_sample_lists/%s_rnaseq_sex_lab.csv",
 mapping2 <- read_csv(sprintf("data/01_metadata/%s_rnaseq_exp_to_sample2.csv", prefix))
 mapping3 <- mapping2 %>% filter(present)
 sl2 <- sl %>% filter(sample_acc %in% mapping3$sample_acc)
+sl3 <- sl2 %>% group_by(study_acc) %>% filter(n() >=5) %>% sample_n(5)
+sl3.2 <- sl2 %>% group_by(study_acc) %>% filter(n() <5) 
+sl4 <- rbind(sl3, sl3.2)
+#set.seed(500)
+#if (nrow(sl2) > 2000){
+#  sl_f <- sl2 %>% filter(sex=="female") %>% sample_n(1000)
+#  sl_m <- sl2 %>% filter(sex=="male") %>% sample_n(1000)
+#} else {
+#  sl_f <- sl2 %>% filter(sex=="female")
+#  sl_m <- sl2 %>% filter(sex=="male")
+#}
 
-set.seed(500)
-if (nrow(sl2) > 2000){
-  sl_f <- sl2 %>% filter(sex=="female") %>% sample_n(1000)
-  sl_m <- sl2 %>% filter(sex=="male") %>% sample_n(1000)
-} else {
-  sl_f <- sl2 %>% filter(sex=="female")
-  sl_m <- sl2 %>% filter(sex=="male")
-}
-
-
-sl_sm <- rbind(sl_f, sl_m)
+sl4 <- sl_sm 
+#sl_sm <- rbind(sl_f, sl_m)
 
 grab_samples <- function(study_id){
   sample_list <- sl_sm %>% filter(study_acc==study_id)
@@ -64,7 +66,7 @@ for (i in 1:num_chunks){
   }
 }
 
-all_df %>% write_csv(sprintf("data/%s/04_sl_input/%s_rnaseq_sl_in.csv", prefix, prefix))
+save(all_df, file=sprintf("data/%s/04_sl_input/%s_rnaseq_sl_in2.RData", prefix, prefix))
 
 
 

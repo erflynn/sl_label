@@ -15,18 +15,8 @@ extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
   return(my.list[(idx*SIZE.CHUNK+1):end_idx])
 }
 
-
-studyMat <- function(study_id){
-print(study_id)
-   out.path <- sprintf("data/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id)
-   if (file.exists(out.path) &  file.info(out.path)$size!=0){
-       print("file already generated")
-       return(NA)
-  }
-
-  sample_list <- mapping %>% filter(study_acc==study_id & !is.na(sample_acc) & !is.na(study_acc))
-  sample_dat <- lapply(sample_list$sample_acc, function(sample_id){
-    sample.path <- sprintf("data/rnaseq/%s/%s/%s_quant.sf", 
+sampleMat <- function(sample_id, study_id){
+   sample.path <- sprintf("data/rnaseq/%s/%s/%s_quant.sf", 
                            prefix, study_id, sample_id);
     print(sample_id);
     if (file.exists(sample.path)){
@@ -48,7 +38,10 @@ print(study_id)
     } else {
       return(NA)
     }
-  })
+}
+
+extractStudyChunk <- function(study_id, list_samples){
+  sample_dat <- lapply(list_samples, function(sample_id){ sampleMat(sample_id, study_id) })
   sample_dat2 <- sample_dat[!is.na(sample_dat)]
   if (all(is.na(sample_dat))){
      return(NA)
@@ -60,8 +53,36 @@ print(study_id)
   } else {
     print(sprintf("Row lengths do not match for %s: %s", prefix, study_id))
     study_df <- sample_dat2 %>% reduce(full_join, by="gene_name")
+
   }
-  study_df %>% 
+  return(study_df)
+}
+
+studyMat <- function(study_id){
+   print(study_id)
+   out.path <- sprintf("data/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id)
+   if (file.exists(out.path) &  file.info(out.path)$size!=0){
+       print("file already generated")
+       return(NA)
+  }
+  # divide into chunks
+  sample_list <- mapping %>% filter(study_acc==study_id & !is.na(sample_acc) & !is.na(study_acc))
+  num_chunks <- ceiling(length(sample_list$sample_acc)/50)
+  all_df <- data.frame()
+  # iterate through
+  for (i in 1:num_chunks){
+      list_samples <- extractChunk(sample_list$sample_acc, i-1)
+      chunk_df <- extractStudyChunk(study_id, list_samples)
+      if (!is.na(chunk_df)){
+         if (ncol(all_df)==0){
+      	    all_df <- data.frame(chunk_df)
+      	 } else {
+      	   all_df <- full_join(all_df, data.frame(chunk_df), by="gene_name")
+      	 }
+      }
+  }
+  
+  all_df %>% 
     write_csv(out.path)
 }
 
@@ -71,6 +92,7 @@ mapping <- fread(sprintf("data/%s/02_sample_lists/%s_rnaseq_exp_to_sample.csv", 
                  data.table=FALSE) %>% filter(!is.na(study_acc))
 #list.studies <- unique(mapping$study_acc)
 list.studies <- list.files(sprintf("data/rnaseq/%s/", prefix), pattern="*RP*")
+
 print(length(list.studies))
 small.list <- extractChunk(list.studies, idx, SIZE.CHUNK=500)
 print(small.list)
