@@ -29,12 +29,12 @@ dfs = []
 for i in list_idx:
   idx_df = sample_sm[sample_sm['f_idx']==i]
   df_cols = idx_df['acc'].tolist()
-  res=parse("data/%s/03_gctx/%s_%s.gctx" %(prefix, prefix, i), cid=df_cols)
+  res=parse("data/microarray/%s/03_gctx/%s_%s.gctx" %(prefix, prefix, i), cid=df_cols)
   dfs.append(res.data_df)
 
 # concat and write it out
 my_df = pd.concat(dfs, axis=1)
-my_df.to_csv("data/%s/04_sl_input/%s_expr.csv" %(prefix, out_prefix))
+my_df.to_csv("data/microarray/%s/04_sl_input/%s_expr.csv" %(prefix, out_prefix))
 
 
 

@@ -6,9 +6,6 @@ args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
 idx <- as.numeric(args[2])
 
-
-prefix <- "human"
-
 sl <- read_csv(sprintf("data/01_metadata/%s_rnaseq_sex_lab.csv", 
                        prefix, prefix))
 exp_samp <- read_csv(sprintf("data/01_metadata/%s_rnaseq_exp_to_sample2.csv", prefix))

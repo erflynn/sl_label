@@ -4,17 +4,8 @@ require('data.table')
 
 args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
-
-sl <- read_csv(sprintf("data/%s/02_sample_lists/%s_rnaseq_sex_lab.csv", 
-                       prefix, prefix))
-mapping2 <- read_csv(sprintf("data/01_metadata/%s_rnaseq_exp_to_sample2.csv", prefix))
-mapping3 <- mapping2 %>% filter(present)
-sl2 <- sl %>% filter(sample_acc %in% mapping3$sample_acc)
-sl3 <- sl2 %>% group_by(study_acc) %>% filter(n() >=5) %>% sample_n(5)
-sl3.2 <- sl2 %>% group_by(study_acc) %>% filter(n() <5) 
-sl4 <- rbind(sl3, sl3.2)
-
-sl_sm <- sl4
+sample_f <- args[2]
+outfile <- args[3]
 
 grab_samples <- function(study_id){
   sample_list <- sl_sm %>% filter(study_acc==study_id)
@@ -37,7 +28,12 @@ extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
 
 #all_dfs <- lapply(head(unique(sl_sm$study_acc), 10), grab_samples)
 #all_dfs2 <- all_dfs[!is.na(all_dfs)]
-list_studies <- unique(sl_sm$study_acc)
+
+# read in a file with the list of samples to load
+sample_list <- fread(sample_f, data.table=FALSE)
+
+
+list_studies <- unique(sample_list$study_acc)
 num_chunks <- ceiling(length(list_studies)/20)
 all_df <- data.frame()
 
@@ -49,6 +45,7 @@ for (i in 1:num_chunks){
   dfs2 <- dfs[!is.na(dfs)]
   chunk_df <- dfs2 %>% reduce(full_join, by="gene_name")
   if (!is.na(chunk_df)){
+    save(chunk_df, file=sprintf("data/rnaseq/%s/03_model_in/%s_%s.RData", prefix, outfile, i)))
     if (ncol(all_df)==0){
       all_df <- data.frame(chunk_df)
     } else {
@@ -58,7 +55,7 @@ for (i in 1:num_chunks){
 }
 
 save(all_df, 
-     file=sprintf("data/%s/04_sl_input/%s_rnaseq_sl_in2.RData", prefix, prefix))
+     file=sprintf("data/rnaseq/%s/03_model_in/%s.RData", prefix, outfile))
 
 
 

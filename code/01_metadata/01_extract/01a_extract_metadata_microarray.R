@@ -1,4 +1,9 @@
-# grab the metadata and extract relevant
+# grab the microarray expression metadata and extract relevant terms
+#
+# this results in three files:
+#   experiment_metadata
+#   exp_to_sample
+#   sample_metadata
 
 library(rjson)
 library(tidyverse)
@@ -13,11 +18,6 @@ prefix <- args[1]
 metadata_list <- fromJSON(file = sprintf("data/%s/01_input/aggregated_metadata.json", prefix))
 # experiment:
 #   description, title, source_first_published, pubmed_id, technology, pubmed_id
-#  --PROBLEM: the source_first_published can be missing, and is for a lot of the DDBJ
-#metadata2 <- fromJSON(file="data/rat/01_input/RATTUS_NORVEGICUS/metadata_RATTUS_NORVEGICUS.json")
-# sample again - refinebio_data
-#metadata3 <- fread("data/rat/01_input/RATTUS_NORVEGICUS/metadata_RATTUS_NORVEGICUS.tsv", data.table=FALSE)
-#  35294 x 730 - includes a lot of treatment/review
 
 list.feat <-
   lapply(metadata_list$samples, function(x)
@@ -110,7 +110,7 @@ m_sample %>% write_csv(sprintf("data/%s/02_sample_lists/%s_m_sample.csv", prefix
 
 feat.df3 %>% 
   inner_join(m_to_idx, by=c("acc"="col_name")) %>%
-  write.csv(file=sprintf("data/%s/02_sample_lists/%s_metadata.csv", prefix, prefix), quote=TRUE, row.names=FALSE)
+  write.csv(file=sprintf("data/01_metadata/%s_metadata.csv", prefix), quote=TRUE, row.names=FALSE)
 
 
 # ---------- grab study to sample mapping ---------- #
@@ -132,7 +132,7 @@ exp_data <- exp.df2 %>%
   as.data.frame() %>% 
   select(-sample_acc)
 exp_data %>% 
-  write.csv(file=sprintf("data/%s/02_sample_lists/%s_experiment_metadata.csv", prefix, prefix), 
+  write.csv(file=sprintf("data/01_metadata/%s_experiment_metadata.csv", prefix), 
             quote=TRUE, row.names=FALSE)
 
 
@@ -144,7 +144,7 @@ mapping <- exp.df2 %>%
   separate_rows(sample_acc, sep=";") %>%
   arrange(study_acc, sample_acc)
 mapping %>% 
-  write.csv(file=sprintf("data/%s/02_sample_lists/%s_exp_to_sample.csv", prefix, prefix), 
+  write.csv(file=sprintf("data/01_metadata/%s_exp_to_sample.csv", prefix), 
             quote=TRUE, row.names=FALSE)
 
 

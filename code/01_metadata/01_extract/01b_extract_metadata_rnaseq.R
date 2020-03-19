@@ -1,3 +1,11 @@
+# grab the RNA-seq expression metadata and extract relevant terms
+#
+# this results in three files:
+#   experiment_metadata
+#   exp_to_sample
+#   sample_metadata
+
+
 library(rjson)
 library(tidyverse)
 require('data.table')
@@ -26,7 +34,7 @@ exp_data <- exp.df2 %>%
   as.data.frame() %>% 
   select(-sample_acc)
 exp_data %>% 
-  write.csv(file=sprintf("data/%s/02_sample_lists/%s_rnaseq_experiment_metadata.csv", prefix, prefix), 
+  write.csv(file=sprintf("data/01_metadata/%s_rnaseq_experiment_metadata.csv", prefix), 
             quote=TRUE, row.names=FALSE)
 
 
@@ -39,7 +47,7 @@ mapping <- exp.df2 %>%
   separate_rows(sample_acc, sep=";") %>%
   arrange(study_acc, sample_acc)
 mapping %>% 
-  write.csv(file=sprintf("data/%s/02_sample_lists/%s_rnaseq_exp_to_sample.csv", prefix, prefix), 
+  write.csv(file=sprintf("data/01_metadata/%s_rnaseq_exp_to_sample.csv", prefix), 
             quote=TRUE, row.names=FALSE)
 
 
@@ -68,7 +76,7 @@ cl.counts <- table(feat.df3$cl_line)
 trt.counts <- table(feat.df3$trt)
 
 feat.df3 %>% 
-  write.csv(file=sprintf("data/%s/02_sample_lists/%s_rnaseq_sample_metadata.csv", prefix, prefix), 
+  write.csv(file=sprintf("data/01_metadata/%s_rnaseq_sample_metadata.csv", prefix), 
             quote=TRUE, row.names=FALSE)
 
 
@@ -82,4 +90,4 @@ sex_lab2 <- sex_lab %>%
   select(study_acc, sample_acc, sex) %>%
   arrange(study_acc, sample_acc)
 
-sex_lab2 %>% write_csv(sprintf("data/%s/02_sample_lists/%s_rnaseq_sex_lab.csv", prefix, prefix))
+sex_lab2 %>% write_csv(sprintf("data/%s/02_sample_lists/%s_rnaseq_sex_lab.csv", prefix,prefix))

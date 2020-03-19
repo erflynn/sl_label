@@ -1,0 +1,55 @@
+---
+title: "metadata_cl_labels.Rmd"
+author: "E Flynn"
+date: "3/2/2020"
+output: html_document
+---
+
+
+
+
+
+PROBLEM -- we only have GEO data for a subset....
+```{r}
+res <- inner_join(human_gse_gsm, human_metadata, by=c("gsm"="acc")) 
+# 325962 (in 401056 rows, 11182 studies) vs 430119
+```
+
+How do the cell line annotations agree?
+- problem: first need to map the refine-bio annotations TO cellosaurus or drugbank
+
+```{r}
+human_metadata <- read.csv("data/01_metadata/human_metadata.csv")
+refine_cl_annot <- human_metadata %>% select(acc, cl_line) %>% filter(!is.na(cl_line) & cl_line!="--" & cl_line !="")
+refine_mapped <- read_csv(sprintf("data/%s_acc_to_cl.csv", prefix))
+# how many dont map?
+refine_mapped %>% head()
+refine_cl_annot %>% head()
+
+no_match <- refine_cl_annot %>% anti_join(refine_mapped, by=c("acc"="gsm")) # 12k
+no_match %>% select(cl_line) %>% unique()
+
+match <-refine_cl_annot %>% inner_join(refine_mapped, by=c("acc"="gsm")) # 49875
+
+top_cl <- data.frame(match) %>% filter(!is.na(accession)) %>% group_by(accession) %>% count() %>% arrange(desc(n)) %>% head(10)
+
+# select 10 cell lines and try to look at these
+# also make them not trt data
+res2 <- match %>% filter(accession %in% top_cl$accession) %>% left_join(human_metadata %>% select(acc, compound, trt, f_idx, idx), by="acc") %>% filter(compound == "" & trt == "")
+
+res2 %>% select(acc, accession, f_idx, idx) %>% unique() %>% arrange(idx) %>% write_csv("data/cell_line_no_trt.csv")
+
+### which are the mismatched ones? ###
+
+```
+
+
+```{r}
+res2 <- res %>% select(gse, cl_line) %>% group_by(gse) %>% summarize(refine_cl=paste(unique(cl_line[!is.na(cl_line)]), collapse=";"))
+cell_annot2 <- cell_annot %>% select(gse, cell_line, cl, accession) %>% inner_join(res2, by="gse")
+cell_lab_present <- cell_annot2 %>% filter(refine_cl!="")
+cell_lab_present %>% View()
+```
+
+
+How do the treatment annotations agree?
