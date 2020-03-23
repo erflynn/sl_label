@@ -12,4 +12,5 @@ prefix=$1
 
 #Rscript code/02e_grab_rnaseq.R $prefix $i
 
-Rscript code/02g_check_output.R $prefix
+#Rscript code/02g_check_output.R $prefix
+Rscript code/01_quant_to_csv.R $prefix $SLURM_ARRAY_TASK_ID

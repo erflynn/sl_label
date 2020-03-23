@@ -17,7 +17,7 @@ exp_present <- exp_samp %>% filter(present)
 my_chunk <- extractChunk(1:nrow(exp_present), idx, 5000)
 
 getNR <- function(study_id, sample_id){
-  sample.path <- sprintf("data/rnaseq/%s/%s/%s_quant.sf", 
+  sample.path <- sprintf("data/rnaseq/%s/00_infiles/%s/%s_quant.sf", 
                          prefix, study_id, sample_id);
   my_dat <- fread(sample.path, data.table=FALSE) 
   sum(my_dat$NumReads)

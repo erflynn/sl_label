@@ -8,7 +8,7 @@ sample_f <- args[2]
 outfile <- args[3]
 
 grab_samples <- function(study_id){
-  sample_list <- sl_sm %>% filter(study_acc==study_id)
+  sample_list2 <- sample_list %>% filter(study_acc==study_id)
   my.f <- sprintf("data/rnaseq/%s/01_study_mat/%s.csv", 
                   prefix, study_id)
   if (!file.exists(my.f) | file.info(my.f)$size==0){
@@ -16,7 +16,7 @@ grab_samples <- function(study_id){
   }
   # what to do if the file doesn't exist
   dat <- fread(my.f, data.table=FALSE)
-  overlap.s <- intersect(colnames(dat), sample_list$sample_acc)
+  overlap.s <- intersect(colnames(dat), sample_list2$sample_acc)
   return(dat[,c("gene_name", overlap.s)])
 }
 
@@ -45,7 +45,7 @@ for (i in 1:num_chunks){
   dfs2 <- dfs[!is.na(dfs)]
   chunk_df <- dfs2 %>% reduce(full_join, by="gene_name")
   if (!is.na(chunk_df)){
-    save(chunk_df, file=sprintf("data/rnaseq/%s/03_model_in/%s_%s.RData", prefix, outfile, i)))
+    save(chunk_df, file=sprintf("data/rnaseq/%s/03_model_in/%s_%s.RData", prefix, outfile, i))
     if (ncol(all_df)==0){
       all_df <- data.frame(chunk_df)
     } else {

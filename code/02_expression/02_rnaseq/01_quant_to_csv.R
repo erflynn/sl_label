@@ -16,7 +16,7 @@ extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
 }
 
 sampleMat <- function(sample_id, study_id){
-   sample.path <- sprintf("data/rnaseq/%s/%s/%s_quant.sf", 
+   sample.path <- sprintf("data/rnaseq/%s/00_infiles/%s/%s_quant.sf", 
                            prefix, study_id, sample_id);
     print(sample_id);
     if (file.exists(sample.path)){
@@ -88,10 +88,10 @@ studyMat <- function(study_id){
 
 
 # read in the mapping file
-mapping <- fread(sprintf("data/%s/02_sample_lists/%s_rnaseq_exp_to_sample.csv", prefix, prefix), 
+mapping <- fread(sprintf("data/01_metadata/%s_rnaseq_exp_to_sample.csv", prefix, prefix), 
                  data.table=FALSE) %>% filter(!is.na(study_acc))
 #list.studies <- unique(mapping$study_acc)
-list.studies <- list.files(sprintf("data/rnaseq/%s/", prefix), pattern="*RP*")
+list.studies <- list.files(sprintf("data/rnaseq/%s/00_infiles/", prefix), pattern="*RP*")
 
 print(length(list.studies))
 small.list <- extractChunk(list.studies, idx, SIZE.CHUNK=500)
