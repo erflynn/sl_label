@@ -1,16 +1,8 @@
-# setup:
-# -- meta_df: study, sample, label (binary for now)
-# -- expr_df: cols are samples
-# goal:
-# each study is in a unique fold
-#  80% for nested CV
-#   8-fold CV
-#    1-6 --> into cv.glmnet to tune for lambda, alpha, type.measure, etc
-#    valid on two folds (before too small)
-#  20% held out test
-
 require('tidyverse')
 require('glmnet')
+
+args <- commandArgs(trailingOnly=TRUE)
+prefix <- args[1]
 
 ## ------- SETUP -------- ##
 
@@ -84,7 +76,7 @@ test_data <- samp_to_fold2 %>%
   filter(fold %in% test_folds)
 test_expr_data <- expr_df2[,test_data$sample_acc]
 test_labels <- test_data$sex
-  
+
 train_valid <- samp_to_fold2 %>% filter(!fold %in% test_folds)
 
 run_fold <- function(my.fold){
@@ -102,7 +94,7 @@ run_fold <- function(my.fold){
   # now run the fit!
   x_train <- t(train_expr_data)
   x_valid <- t(valid_expr_data)
-
+  
   test_params <- function(my.alpha, my.measure){
     cvfit = cv.glmnet(x_train, train_labels, 
                       family="binomial",
@@ -162,34 +154,3 @@ train_valid_expr <- expr_df2[,train_valid$sample_acc]
 train_valid_lab <- train_valid$sex
 save(train_valid_expr, train_valid_lab, test_expr_data, test_labels, 
      file=sprintf("data/rnaseq/%s/03_model_in/train_test.RData", prefix))
-
-
-# setup the model in a function
-
-ggplot(fold_df, aes(y=v, x=alpha, group=alpha))+
-  geom_boxplot(aes(col=measure))+
-  ylab("validation error")
-mean_sd <- fold_df %>% 
-  group_by(alpha, measure) %>% 
-  summarize(mean=mean(v), sd=sd(v)) %>%
-  mutate(vlo=mean-1.96*sd, vup=mean+1.96*sd)
-mean_sd %>% filter(measure=="deviance")
-fold_df %>% 
-  filter(alpha==0.1, measure=="deviance") %>% 
-  summarize(mean=mean(lambda), sd=sd(lambda)) # --> use this!
-
-# alpha=0.3, measure="deviance"
-
-fit <- glmnet(t(train_valid_expr), alpha=0.1, train_valid_lab, family="binomial")
-mat_coef <- coef(fit,s=0.27)  %>% as.matrix()
-nonzero_coef <- mat_coef[mat_coef[,1]!=0,] # 59
-train_valid_pred <- predict(fit, newx=t(train_valid_expr), s=0.27, type="class")
-sum(train_valid_pred==train_valid_lab)/length(train_valid_lab) # 0.897
-
-test_pred <- predict(fit, newx=t(test_expr_data), s=0.27, type="class")
-sum(test_pred==test_labels)/length(test_labels) # 0.915
-
-save(fit, file=sprintf("data/rnaseq/%s/04_model_out/%s_rnaseq_fit.RData", prefix, prefix))
-
-
-
