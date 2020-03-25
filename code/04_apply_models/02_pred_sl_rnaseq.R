@@ -24,12 +24,15 @@ slStudy <- function(study_id){
   return(my_dat[my_rows,]) # return labels
 }
 
-exp_samp <- read_csv(sprintf("data/01_metadata/%s_rnaseq_exp_to_sample2.csv", prefix))
+exp_samp <- read_csv(sprintf("data/01_metadata/%s_exp_to_sample_counts.csv", prefix))
 list.studies <- unique(exp_samp$study_acc)
+sample_df <- exp_samp %>% 
+  filter(present & num_reads >= 100000 & study_acc %in% list.studies)
 
 study_chunk <- extractChunk(list.studies, idx, 50)
 print("extracting")
-all_dat <- do.call(cbind, lapply(study_chunk, slStudy))
+all_dat0 <- do.call(cbind, lapply(study_chunk, slStudy))
+all_dat <- all_dat0[,sample_df$sample_acc] # filter for appropriate ones
 all_dat[is.na(all_dat)] <- 0
 num_zeros <- apply(all_dat, 1, function(x) sum(x==0))
 all_dat2 <- all_dat[num_zeros <= 0.9*ncol(all_dat),]
