@@ -1,6 +1,6 @@
 require('tidyverse')
 require('glmnet')
-
+require('bestNormalize')
 args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
 
@@ -27,10 +27,15 @@ xy_genes <- read_csv(sprintf("data/rnaseq/%s/03_model_in/xy_genes_rnaseq.csv", p
 rownames(expr_df) <- all_df$gene_name
 expr_df2 <- expr_df[xy_genes$transcript,]
 
+# remove mostly empty rows
+num_zeros <- apply(expr_df2, 1, function(x) sum(x==0)) # remove > 70% zeros
+expr_df2 <- expr_df2[(num_zeros/ncol(expr_df2) <= 0.7),]
+
+
 # --------- LET'S GO! ---------- #
 
 # count and shuffle within each count
-set.seed(5)
+set.seed(10)
 study_counts_df <- meta_df %>% 
   group_by(study_acc) %>% 
   count() %>% 
@@ -85,40 +90,44 @@ run_fold <- function(my.fold){
   # redo the training fold
   my.folds <- data.frame(cbind("fold"=unique(train_data$fold), "new_fold"=1:5))
   train_data2 <- train_data %>% left_join(my.folds)
+  
   train_expr_data <- expr_df2[,train_data2$sample_acc]
   train_labels <- train_data2$sex
   train_folds <- train_data2$new_fold
   valid_expr_data <- expr_df2[,valid_data$sample_acc]
   valid_labels <- valid_data$sex
   
-  # now run the fit!
+  # transform and run 
   x_train <- t(train_expr_data)
   x_valid <- t(valid_expr_data)
   
-  test_params <- function(my.alpha, my.measure){
-    cvfit = cv.glmnet(x_train, train_labels, 
+  x_train2 <- apply(x_train, 2, function(col) boxcox(col+0.5)$x.t)
+  x_valid2 <- apply(x_valid, 2, function(col) boxcox(col+0.5)$x.t)
+  
+  test_params <- function(my.alpha){
+    cvfit = cv.glmnet(x_train2, train_labels, 
                       family="binomial",
                       foldid=train_folds,
                       nfolds=5,
                       alpha=my.alpha, 
-                      standardize=TRUE,
-                      type.measure=my.measure)
-    preds_train <- predict(cvfit, newx=x_train, s="lambda.1se", type="response")
-    preds_class_train <- sapply(predict(cvfit, newx=x_train, s="lambda.1se", type="class"), 
+                      standardize=FALSE)
+    preds_train <- predict(cvfit, newx=x_train2, s="lambda.1se", type="response")
+    preds_class_train <- sapply(predict(cvfit, newx=x_train2, s="lambda.1se", type="class"), 
                                 as.numeric)
     train_acc <- sum(preds_class_train==train_labels)/length(train_labels)
+    print(train_acc)
     #preds_valid <- predict(cvfit, newx=x_valid, s="lambda.1se", type="response")
-    preds_class_valid <- sapply(predict(cvfit, newx=x_valid, s="lambda.1se", type="class"), as.numeric)
+    preds_class_valid <- sapply(predict(cvfit, newx=x_valid2, s="lambda.1se", type="class"), as.numeric)
     valid_acc <- sum(preds_class_valid==valid_labels)/length(valid_labels) 
+    print(valid_acc)
     return(list("t"=train_acc, 
                 "v"=valid_acc, 
                 "lambda"=cvfit$lambda.1se, 
-                "alpha"=my.alpha, 
-                "measure"=my.measure))
+                "alpha"=my.alpha))
   }
   param_res <- data.frame()
   for (my.alpha in seq(0,1, 0.1)){
-    alpha_res <- test_params(my.alpha, "deviance")
+    alpha_res <- test_params(my.alpha)
     if (my.alpha==0){
       param_res <- alpha_res
     } else {
@@ -147,7 +156,7 @@ fold_df <- apply(fold_res, c(1,2), unlist) %>% as_tibble()  %>%
          lambda=as.numeric(lambda),
          alpha=as.numeric(alpha)) 
 fold_df %>% 
-  write_csv(sprintf("data/rnaseq/%s/04_model_out/%s_fold_res.csv", prefix, prefix))
+  write_csv(sprintf("data/rnaseq/%s/04_model_out/%s_fold_res_transform.csv", prefix, prefix))
 
 # save the training and testing data + cutoff
 train_valid_expr <- expr_df2[,train_valid$sample_acc]
