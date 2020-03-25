@@ -21,7 +21,7 @@ sl <- read_csv(sprintf("data/01_metadata/%s_rnaseq_sex_lab.csv",prefix)) %>%
 rownames(sl) <- sl$sample_acc
 
 # filter so no cell line samples (?)
-metadata <- read.csv(sprintf("data/01_metadata/%s_rnaseq_sample_metadata.csv", prefix))
+metadata <- read.csv(sprintf("data/01_metadata/%s_rnaseq_sample_metadata.csv", prefix), stringsAsFactors = FALSE)
 metadata_sm <- metadata %>% filter(acc %in% colnames(all_df))
 no_cl <- metadata_sm %>% 
   filter(cl_line %in% c("", "--", "n/a", "not applicable", "na"))
@@ -179,15 +179,38 @@ fold_df %>%
   summarize(mean=mean(lambda), sd=sd(lambda)) # --> use this!
 
 # alpha=0.3, measure="deviance"
+my.folds <- data.frame(cbind("fold"=unique(train_valid$fold), "new_fold"=1:6))
+train_data2 <- train_valid %>% left_join(my.folds)
+train_folds <- train_data2$new_fold
 
-fit <- glmnet(t(train_valid_expr), alpha=0.1, train_valid_lab, family="binomial")
-mat_coef <- coef(fit,s=0.27)  %>% as.matrix()
-nonzero_coef <- mat_coef[mat_coef[,1]!=0,] # 59
-train_valid_pred <- predict(fit, newx=t(train_valid_expr), s=0.27, type="class")
-sum(train_valid_pred==train_valid_lab)/length(train_valid_lab) # 0.897
+cvfit <- cv.glmnet(t(train_valid_expr), alpha=1, foldid=train_folds, train_valid_lab, family="binomial")
+train_pred <- predict(cvfit, newx=t(train_valid_expr), s="lambda.1se", type="class")
+sum(train_pred==train_valid_lab)/length(train_valid_lab) 
 
-test_pred <- predict(fit, newx=t(test_expr_data), s=0.27, type="class")
+test_pred <- predict(cvfit, newx=t(test_expr_data), s="lambda.1se", type="class")
 sum(test_pred==test_labels)/length(test_labels) # 0.915
+
+mat_coef <- coef(cvfit, lambda="lambda.1se") %>% as.matrix()
+nonzero_coef <- mat_coef[mat_coef[,1]!=0,]
+coef_df <- data.frame(cbind("gene"=names(nonzero_coef), coef=nonzero_coef))
+
+xy_genes <- read_csv(sprintf("data/rnaseq/%s/03_model_in/xy_genes_rnaseq.csv", prefix))
+
+coef_df2 <- coef_df %>% left_join(xy_genes, by=c("gene"="transcript"))
+
+coef_df2 %>%
+  mutate(coef=as.numeric(as.character(coef))) %>%
+  arrange(coef) %>% 
+  filter(!is.na(chromosome_name)) %>% 
+  write_csv(sprintf("data/%s/04_sl_input/%s_coef.csv", prefix, prefix))
+
+save(cvfit, file=sprintf("data/%s/04_sl_input/cvfit.RData", prefix))
+
+coef_df2 %>% arrange(coef) %>% left_join(ref_dat %>% 
+                                          select(ensembl_gene_id, hgnc_symbol) %>% 
+                                          unique(), by=c("gene"="ensembl_gene_id")) %>% 
+  filter(!is.na(hgnc_symbol)) %>% write_csv(sprintf("data/%s/04_sl_input/coef_annot.csv", prefix))
+
 
 save(fit, file=sprintf("data/rnaseq/%s/04_model_out/%s_rnaseq_fit.RData", prefix, prefix))
 
