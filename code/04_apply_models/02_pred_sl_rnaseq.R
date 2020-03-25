@@ -1,5 +1,7 @@
 require('tidyverse')
 require('glmnet')
+require('bestNormalize')
+
 args <- commandArgs(trailingOnly=TRUE)
 
 prefix <- args[1]
@@ -12,23 +14,31 @@ extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
 }
 
 # prediction function, list of genes
-load(file=sprintf("data/%s/04_sl_input/rnaseq_fun.RData", prefix)) # pred_fun
-xy_genes <- read_csv(sprintf("data/%s/04_sl_input/xy_genes_rnaseq.csv", prefix)) 
-
+load(file=sprintf("data/rnaseq/%s/04_model_out/rnaseq_sl_fit.RData", prefix)) # my.lambda, fit
+my_rows <- unique(rownames(fit$beta))
 slStudy <- function(study_id){
   my_dat <- read_csv(sprintf("data/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id))  %>% as.data.frame()
-  rownames(my_dat) <- "gene_name"
+  rownames(my_dat) <- my_dat$gene_name
   my_dat$gene_name <- NULL 
   # select genes and rotate
-  my_dat2 <- my_dat[xy_genes,] # select the genes of interest
-
-  preds <- pred_fun(t(my_dat2), type="response") #predict(fit, newx=t(my_dat), s="lambda.1se", type="response")
-  preds2 <- data.frame("id"=rownames(preds), "pred"=preds[,1])
-  # label
-  
-  return(preds2) # return labels
+  return(my_dat[my_rows,]) # return labels
 }
 
-preds2 <- 
+exp_samp <- read_csv(sprintf("data/01_metadata/%s_rnaseq_exp_to_sample2.csv", prefix))
+list.studies <- unique(exp_samp$study_acc)
 
-preds2 %>% write_csv(sprintf("data/%s/05_sl_output/%s_rnaseq_sl_%s.csv", prefix, prefix, idx))
+study_chunk <- extractChunk(list.studies, idx, 50)
+print("extracting")
+all_dat <- do.call(cbind, lapply(study_chunk, slStudy))
+all_dat[is.na(all_dat)] <- 0
+num_zeros <- apply(all_dat, 1, function(x) sum(x==0))
+all_dat2 <- all_dat[num_zeros <= 0.9*ncol(all_dat),]
+
+print("normalizing")
+x_test <- apply(all_dat2, 1, function(row) boxcox(row+0.5)$x.t)
+x_test2 <- cbind(x_test, t(all_dat[num_zeros > 0.9*ncol(all_dat),]))[,my_rows]
+print("predicting")
+preds <- predict(fit, newx=x_test2, s=my.lambda, type="response")
+preds2 <- data.frame("id"=rownames(preds), "pred"=preds[,1])
+  
+preds2 %>% write_csv(sprintf("data/rnaseq/%s/04_model_out/%s_rnaseq_sl_%s.csv", prefix, prefix, idx))
