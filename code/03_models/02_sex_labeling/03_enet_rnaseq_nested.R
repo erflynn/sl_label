@@ -1,8 +1,11 @@
 require('tidyverse')
 require('glmnet')
 require('bestNormalize')
+require('limma')
 args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
+
+
 
 ## ------- SETUP -------- ##
 
@@ -12,15 +15,26 @@ sl <- read_csv(sprintf("data/01_metadata/%s_rnaseq_sex_lab.csv",prefix)) %>%
   as.data.frame()
 rownames(sl) <- sl$sample_acc
 
-# filter so no cell line samples (?)
-metadata <- read.csv(sprintf("data/01_metadata/%s_rnaseq_sample_metadata.csv", prefix))
-metadata_sm <- metadata %>% filter(acc %in% colnames(all_df))
-no_cl <- metadata_sm %>% 
-  filter(cl_line %in% c("", "--", "n/a", "not applicable", "na"))
 
-samples <- intersect(no_cl$acc, sl$sample_acc)
-expr_df <- all_df[,samples]
-meta_df <- sl[samples,] 
+
+# do something different for rat
+if (prefix == "rat") {
+  samples <- intersect(colnames(all_df), sl$sample_acc)
+  expr_df <- all_df[,samples]
+  meta_df <- sl[samples,]
+} else {
+  # filter so no cell line samples (?)
+  metadata <- read.csv(sprintf("data/01_metadata/%s_rnaseq_sample_metadata.csv", prefix))
+  metadata_sm <- metadata %>% filter(acc %in% colnames(all_df))
+  no_cl <- metadata_sm %>% 
+    filter(cl_line %in% c("", "--", "n/a", "not applicable", "na"))
+  
+  samples <- intersect(no_cl$acc, sl$sample_acc)
+  expr_df <- all_df[,samples]
+  meta_df <- sl[samples,] 
+}
+
+
 
 # setup genes
 xy_genes <- read_csv(sprintf("data/rnaseq/%s/03_model_in/xy_genes_rnaseq.csv", prefix))
@@ -28,8 +42,130 @@ rownames(expr_df) <- all_df$gene_name
 expr_df2 <- expr_df[xy_genes$transcript,]
 
 # remove mostly empty rows
+expr_df2[is.na(expr_df2)] <- 0
 num_zeros <- apply(expr_df2, 1, function(x) sum(x==0)) # remove > 70% zeros
 expr_df2 <- expr_df2[(num_zeros/ncol(expr_df2) <= 0.7),]
+
+
+train_fold <- function(fold_df, expr_df4, fold_i){
+  train_dat <- fold_df %>% filter(fold!=fold_i)
+  test_dat <- fold_df %>% filter(fold==fold_i)
+  
+  design <- train_dat$sex; exp <- expr_df4[train_dat$sample_acc,]
+  fit <- lmFit(t(exp), design)
+  fit <- eBayes(fit)
+  tt <-topTable(fit, number=ncol(exp))
+  tt$transcript <- rownames(tt)
+  top_f <- tt %>% arrange(logFC) %>% head()
+  top_m <- tt %>% arrange(desc(logFC)) %>% head()
+  
+  list_transcripts <- c(top_f$transcript, top_m$transcript)
+  
+  # BUILD A MODEL...
+  fit = glmnet(expr_df4[train_dat$sample_acc,list_transcripts], train_dat$sex, 
+               family="binomial",
+               alpha=1, 
+               standardize=FALSE)
+  preds_class_train <- sapply(predict(fit, newx=expr_df4[train_dat$sample_acc,list_transcripts],
+                                      s=0.00208, type="class"),  as.numeric)
+  train_acc <- sum(preds_class_train==train_dat$sex)/length(train_dat$sex)
+  print(train_acc)
+  table(data.frame(cbind(preds_class_train, train_dat$sex)))
+  
+  #preds_valid <- predict(cvfit, newx=x_valid, s="lambda.1se", type="response")
+  preds_class_valid <- sapply(predict(fit, newx=expr_df4[test_dat$sample_acc,list_transcripts], 
+                                      s=0.00208, type="class"), as.numeric)
+  test_acc <- sum(preds_class_valid==test_dat$sex)/length(test_dat$sex) 
+  print(test_acc)
+  table(data.frame(cbind(preds_class_valid, test_dat$sex)))
+  
+  return(list("fold"=fold_i, "pl"=preds_class_valid,"tl"=test_dat$sex))
+}
+
+if (prefix == "rat"){
+  expr_df2$gene_name <- NULL
+  expr_df3 <- apply(expr_df2, 1, function(row) boxcox(row+0.5)$x.t)
+  missing <- apply(expr_df3, 2, function(x) sum(is.nan(x)))
+  expr_df4 <- expr_df3[,which(missing == 0)]
+  study_counts_sex <- meta_df %>% filter(sample_acc %in% colnames(expr_df2)) %>% group_by(study_acc) %>%
+    summarize(num_samples=n(), num_f=sum(sex=="female"), num_m=sum(sex=="male")) %>% arrange(desc(num_f), desc(num_m))
+  study_counts_sex$fold <- c(rep(c(1, 2, 3, 3, 2, 1), 2), c(3,2))
+  study_counts_sex %>% ungroup() %>% group_by(fold) %>%
+    select(-study_acc) %>%
+    summarize_all(sum)
+  meta_df2 <- meta_df %>% mutate(sex=ifelse(sex=="female", 0, 1)) 
+  fold_df <- study_counts_sex %>% select(study_acc, fold) %>% left_join(meta_df2) 
+  
+  # SELECT PREDICTORS
+  fold_res <- lapply(1:3, function(i) train_fold(fold_df, expr_df4, i))
+  preds <- unlist(sapply(fold_res, function(x) x$pl))
+  true_lab <- unlist(sapply(fold_res, function(x) x$tl))
+  table(data.frame(cbind(preds, true_lab )))
+  sum(preds==true_lab)/length(true_lab) # 81.1%
+  
+  # train on all
+  design <- meta_df2$sex
+  exp <- expr_df4[meta_df2$sample_acc,]
+  fit <- lmFit(t(exp), design)
+  fit <- eBayes(fit)
+  tt <-topTable(fit, number=ncol(exp))
+  tt$transcript <- rownames(tt)
+  top_f <- tt %>% arrange(logFC) %>% head()
+  top_m <- tt %>% arrange(desc(logFC)) %>% head()
+  
+  list_transcripts <- c(top_f$transcript, top_m$transcript)
+
+  fit = glmnet(expr_df4[meta_df2$sample_acc,list_transcripts], meta_df2$sex, 
+               family="binomial",
+               alpha=1, 
+               standardize=FALSE)
+  my.lambda <- 0.00208
+  
+  mat_coef <- coef(fit, s=my.lambda) %>% as.matrix()
+  nonzero_coef <- mat_coef[mat_coef[,1]!=0,]
+  coef_df <- data.frame(cbind("gene"=names(nonzero_coef), coef=nonzero_coef))
+  
+  xy_genes <- read_csv(sprintf("data/rnaseq/%s/03_model_in/xy_genes_rnaseq.csv", prefix))
+  
+  coef_df2 <- coef_df %>% left_join(xy_genes, by=c("gene"="transcript"))
+  
+  coef_df3 <- coef_df2 %>%
+    mutate(coef=as.numeric(as.character(coef))) %>%
+    arrange(coef) %>% 
+    filter(!is.na(chromosome_name)) 
+  
+  coef_df3 %>%
+    write_csv(sprintf("data/rnaseq/%s/04_model_out/rnaseq_%s_coef.csv", prefix, prefix))
+  save(fit, my.lambda, file=sprintf("data/rnaseq/%s/04_model_out/rnaseq_sl_fit.RData", prefix))
+  
+  # ----- what is the cv accuracy ignoring study divisions? ----- #
+  # f <- meta_df2 %>% filter(sex==0)
+  # m <- meta_df2 %>% filter(sex==1)
+  # nfolds <- 5
+  # set.seed(27)
+  # f.s <- f %>% sample_n(nrow(f))
+  # m.s <- m %>% sample_n(nrow(m))
+  # f.s$fold <- c(rep(c(c(1:nfolds), c(nfolds:1)), floor(nrow(f.s)/(2*nfolds))))
+  # # works b/c exact
+  # m.s$fold <- c(rep(c(c(1:nfolds), c(nfolds:1)), floor(nrow(m.s)/(2*nfolds))),
+  #               c(1:( nrow(m.s)%%(2*nfolds)  )))
+  # fold_res2 <- lapply(1:nfolds, function(i) train_fold(rbind(f.s, m.s), expr_df4, i))
+  # preds <- unlist(sapply(fold_res2, function(x) x$pl))
+  # true_lab <- unlist(sapply(fold_res2, function(x) x$tl))
+  # table(data.frame(cbind(preds, true_lab )))
+  # sum(preds==true_lab)/length(true_lab) # 81.1%, 98.8% if ignore study
+  
+  # -- leave one study out -- #
+  fold_df2 <- fold_df
+  fold_df2$fold <- c(1:14)[factor(fold_df$study_acc)]
+  fold_res3 <- lapply(1:14, function(i) train_fold(fold_df2, expr_df4, i))
+  preds <- unlist(sapply(fold_res3, function(x) x$pl))
+  true_lab <- unlist(sapply(fold_res3, function(x) x$tl))
+  table(data.frame(cbind(preds, true_lab )))
+  sum(preds==true_lab)/length(true_lab) # 93.9% if leave one study out
+  save(fold_res3, file=sprintf("data/rnaseq/%s/04_model_out/fold_res.RData", prefix))
+  
+}
 
 
 # --------- LET'S GO! ---------- #
@@ -53,11 +189,13 @@ study_counts <- study_counts_df %>%
   ungroup() %>%
   filter(!is.na(study_acc))
 
+ngroups <- 8
+
 # need to assign 1:8 *but* also keep things fairly evenly sized
-group_l <- c(1:8, 8:1)
+group_l <- c(1:ngroups, ngroups:1)
 reps <- nrow(study_counts)%/% length(group_l)
 rems <- nrow(study_counts)%% length(group_l)
-opp_group_l <- c(8:1, 1:8)
+opp_group_l <- c(ngroups:1, 1:ngroups)
 study_counts$fold <- c(rep(group_l, reps), opp_group_l[1:rems])
 
 # now count the number of samples, studies per group
@@ -76,7 +214,7 @@ samp_to_fold %>% group_by(fold) %>%
             num_m=sum(sex=="male"))
 samp_to_fold2 <- samp_to_fold %>% 
   mutate(sex=ifelse(sex=="female", 0, 1))
-test_folds <- sample(1:8, 2)
+test_folds <- sample(1:ngroups, 2)
 test_data <- samp_to_fold2 %>% 
   filter(fold %in% test_folds)
 test_expr_data <- expr_df2[,test_data$sample_acc]

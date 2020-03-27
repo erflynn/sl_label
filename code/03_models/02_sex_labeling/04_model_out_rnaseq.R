@@ -2,6 +2,9 @@ require('tidyverse')
 require('glmnet')
 require('bestNormalize')
 
+args <- commandArgs(trailingOnly=TRUE)
+prefix <- args[1]
+# note - this is for mouse, human; rat is done differently
 
 fold_df <- read_csv(sprintf("data/rnaseq/%s/04_model_out/%s_fold_res_transform.csv", prefix, prefix))
 ggplot(fold_df, aes(y=v, x=alpha, group=alpha))+
