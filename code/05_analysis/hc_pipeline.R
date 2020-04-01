@@ -115,7 +115,7 @@ study_df2 %>% filter(!matching)
 # 12/215 do not match
 
 # how do we compare?
-imputed_sl <- read_csv(sprintf("data/02_labeled_data/%s_rnaseq_sl.csv", prefix)) %>%
+imputed_sl <- read_csv(sprintf("data/02_imputed_labels/%s_rnaseq_sl.csv", prefix)) %>%
 mutate(imputed_sex=ifelse(pred > 0.5, "male", "female"))
 study_df3 <- study_df2 %>% left_join(imputed_sl, by=c("sample_acc"="id"))
 study_df3 %>% filter(!matching) %>% select(metadata_sex, massir_sex, imputed_sex)

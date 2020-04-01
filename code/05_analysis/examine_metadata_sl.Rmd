@@ -453,7 +453,7 @@ ggplot(human %>% left_join(h_map, by=c("acc"="sample_acc")) %>% filter(study_acc
 
 Drug breakdown
 ```{r}
-drugbank_dat <- read_tsv("../labeling/geo2drug/data/02_labeled_data/drugbank_mapped_gse.txt")
+drugbank_dat <- read_tsv("../../../labeling/geo2drug/data/02_labeled_data/drugbank_mapped_gse.txt")
 
 require('GEOmetadb')
 con <- dbConnect(SQLite(), "../labeling/GEOmetadb.sqlite")
@@ -618,6 +618,8 @@ cl_atc <- h_drug_class2 %>%
   count() 
 
 ggplot(cl_atc %>% filter(class %in% c("G", "L")), aes(x=cell_line, y=n))+geom_bar(aes(fill=study_type), stat="identity")+facet_wrap(.~class)
+
+
 
 
 m_cl_atc <- m_drug_class2 %>% 

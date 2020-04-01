@@ -33,6 +33,10 @@ all_str2 <- all_str %>%
   filter(!is.na(str) & str!="--" & str !="" & is.na(as.numeric(str)))  %>%
   filter(nchar(str) >=3)
 
+cell_df <- rbind(cell_lab_name, cell_lab_syn %>% rename(cl=synonyms)) %>%
+  mutate(
+    nwords=length(strsplit(cl, " ")[[1]]),
+    numchar=nchar(cl)) 
 
 mapTextCl <- function(text_df, cell_df){
   # ---- unigrams ---- #
@@ -60,7 +64,7 @@ mapTextCl <- function(text_df, cell_df){
     arrange(desc(total))
   
   gsm_unigrams_char3 %>% group_by(word) %>% count() %>% arrange(desc(n))
-  char3_stop <- c("the", "and", "sum", "age", "hey", "for", "wbs", "mel")
+  char3_stop <- c("the", "and", "sum", "age", "hey", "for", "wbs", "mel", "ctr")
   comb_names_n3.2 <- comb_names_n3 %>% filter(!cl %in% char3_stop)
   # <--- I don't think we should use.... 
   # or if we do it needs to be 1word? or paired or something?---> #
