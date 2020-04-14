@@ -107,10 +107,15 @@ study_df <- do.call(rbind, study_res)
 study_df %>% write_csv(sprintf("data/rnaseq/%s/hc_%s.csv", prefix, idx))
 exit()
 
+list.f <- list.files(path=sprintf("data/rnaseq/%s/", prefix), pattern="hc_*")
+study_df <- do.call(rbind, lapply(list.f, function(x) read_csv(sprintf("data/rnaseq/%s/%s", prefix, x))))
 study_df2 <- study_df %>% 
   mutate(matching=((massir_sex==metadata_sex & !is.na(massir_sex)) | 
                      (toker_sex==metadata_sex & !is.na(toker_sex))))
-table(study_df2$matching)
+table(study_df2$matching) 
+# human: 4057 match, 211 do not
+# mouse: 4628 match, 440 do not
+
 study_df2 %>% filter(!matching)
 # 12/215 do not match
 
@@ -119,5 +124,5 @@ imputed_sl <- read_csv(sprintf("data/02_imputed_labels/%s_rnaseq_sl.csv", prefix
 mutate(imputed_sex=ifelse(pred > 0.5, "male", "female"))
 study_df3 <- study_df2 %>% left_join(imputed_sl, by=c("sample_acc"="id"))
 study_df3 %>% filter(!matching) %>% select(metadata_sex, massir_sex, imputed_sex)
-hc <- study_df3 %>% filter(matching)
-sum(hc$imputed_sex==hc$metadata_sex)/nrow(hc) # 100%...
+hc <- study_df3 %>% filter(matching) %>% filter(!is.na(imputed_sex))
+sum(hc$imputed_sex==hc$metadata_sex)/nrow(hc) # human - 98.4%, mouse - 98.5% rat - 100%...

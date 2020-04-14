@@ -11,19 +11,23 @@ import argparse
 # parse out human argument
 parser = argparse.ArgumentParser()
 parser.add_argument('--prefix', help='the prefix for the files')
+parser.add_argument('--datatype', help='the prefix for the files')
+
 args = parser.parse_args()
 prefix=args.prefix
+data_type=args.datatype
 
-metadata = pd.read_csv("data/%s_metadata2.csv" %prefix )
+metadata = pd.read_csv("data/02_labeled_data/%s_%s_sl.csv" %(prefix, data_type ))
+
 print(metadata.shape)
-metadata_sm = metadata[["acc", "sex_lab", "pred"]]
+metadata_sm = metadata[["id", "pred"]]
 
 row_dicts = []
 for index,row in metadata_sm.iterrows():
-  sample_accession = row['acc']
-  sex = row['sex_lab']
+  sample_accession = row['id']
+  #sex = row['sex_lab']
   prob = row['pred']
-  if sex=="female":
+  if prob < 0.5:
     sex = "PATO:0000383"
     prob = 1-prob
   else:
@@ -34,6 +38,6 @@ for index,row in metadata_sm.iterrows():
   row_dicts.append(row_dict)
 
 # json dump the whole thing
-with open("data/%s_sex_lab.json" %prefix, 'w') as f:
+with open("data/02_labeled_data/%s_%s_sex_lab.json" %(prefix, data_type), 'w') as f:
 	row_str = json.dumps(row_dicts)
 	f.write(row_str)
