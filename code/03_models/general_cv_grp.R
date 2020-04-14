@@ -16,6 +16,7 @@ args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
 data_type <- args[2]
 ds <- args[3]
+i <- as.numeric(args[4])
 
 # set up the data
 pos <- fread(sprintf("data/%s/%s/04_sl_input/%s_%s_pos_expr.csv", data_type, prefix, prefix, ds ), data.table=FALSE)
@@ -147,7 +148,6 @@ run_fold <- function(my.fold, nfolds=NFOLDS){
     return(list("tv"=train_valid_assess, "ydf"=df))
   }
   
-  
   param_res <- data.frame()
   for (my.alpha in seq(0,1, 0.1)){
     alpha_res <- test_params(my.alpha)
@@ -160,18 +160,21 @@ run_fold <- function(my.fold, nfolds=NFOLDS){
   return(param_res)
 }
 
-fold_res <- data.frame()
-folds <- unique(train_valid$fold)
-for (i in 1:length(folds)){
-  print(i)
-  res <- run_fold(folds[i])
-  if (i==1){
-    fold_res <- res
-  }
-  else {
-    fold_res <- rbind(fold_res, res)
-  }
-} 
+res <- run_fold(folds[i])
+write_csv(res, file=sprintf("data/%s/%s/04_sl_input/fold_%s_%s.csv", data_type, prefix, ds, i))
+
+# fold_res <- data.frame()
+# folds <- unique(train_valid$fold)
+# for (i in 1:length(folds)){
+#   print(i)
+#   res <- run_fold(folds[i])
+#   if (i==1){
+#     fold_res <- res
+#   }
+#   else {
+#     fold_res <- rbind(fold_res, res)
+#   }
+# } 
 
 
 
