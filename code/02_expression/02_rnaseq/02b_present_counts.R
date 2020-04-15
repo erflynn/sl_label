@@ -1,7 +1,14 @@
 # figure out which RNA-seq files are present
 
 require('tidyverse')
-load(sprintf("data/%s_counts_rna.RData", prefix))
+
+options(stringsAsFactors=FALSE)
+
+args <- commandArgs(trailingOnly=TRUE)
+prefix <- args[1]
+
+load(sprintf("data/03_qc/%s_counts_rna.RData", prefix))
+
 summary(sapply(res, function(x) x$nrow))
 
 samples <- unique(unlist(sapply(res, function(x) x$samples)))

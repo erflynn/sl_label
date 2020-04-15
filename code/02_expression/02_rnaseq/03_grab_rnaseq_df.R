@@ -55,7 +55,7 @@ for (i in 1:num_chunks){
 }
 
 save(all_df, 
-     file=sprintf("data/rnaseq/%s/03_model_in/%s.RData", prefix, outfile))
+     file=sprintf("data/05_train_df/%s_rnaseq_%s.RData", prefix, outfile))
 
 
 

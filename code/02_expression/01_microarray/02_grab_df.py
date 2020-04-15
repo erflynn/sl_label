@@ -19,7 +19,8 @@ prefix=args.prefix
 infile=args.infile
 out_prefix=args.outfile
 
-sample_list = pd.read_csv(infile)
+samples = pd.read_csv(infile)
+sample_list = samples[samples['idx']%20000!=2]
 sample_sm = sample_list[['acc', 'f_idx', 'idx']]
 list_idx = sample_sm['f_idx'].unique()
 list_idx.sort()
@@ -34,7 +35,7 @@ for i in list_idx:
 
 # concat and write it out
 my_df = pd.concat(dfs, axis=1)
-my_df.to_csv("data/microarray/%s/04_sl_input/%s_expr.csv" %(prefix, out_prefix))
+my_df.to_csv("data/05_train_df/%s_%s_expr.csv" %(prefix, out_prefix))
 
 
 
