@@ -21,15 +21,15 @@ formattedList <- function(my_list){
 
 Accuracy metrics 
 ```{r}
-human <- read.csv("data/human_metadata2.csv")
-mouse <- read.csv("data/mouse_metadata2.csv")
-rat <- read.csv("data/rat_metadata2.csv")
+human <- read.csv("../../data/human_metadata2.csv")
+mouse <- read.csv("../../data/mouse_metadata2.csv")
+rat <- read.csv("../../data/rat_metadata2.csv")
 
 
 ## get the study level labels 
-h_map <- read.csv("data/human_exp_to_sample.csv")
-m_map <- read.csv("data/mouse_exp_to_sample.csv")
-r_map <- read.csv("data/rat_exp_to_sample.csv")
+h_map <- read.csv("../../data/human_exp_to_sample.csv")
+m_map <- read.csv("../../data/mouse_exp_to_sample.csv")
+r_map <- read.csv("../../data/rat_exp_to_sample.csv")
 ## clean up the metadata sex labels
 
 ```
@@ -139,7 +139,20 @@ ggplot(large_study,
 What is the sex breakdown overall before and after?
 ```{r}
 # sample level
-human_alt <- read_csv("human_alt_sex_annot.csv")
+rat_alt <- read.csv("../../data/01_metadata/rat_microarray_metadata_sex.csv") %>% unique()
+
+mouse_alt <- read.csv("../../data/01_metadata/mouse_microarray_metadata_sex.csv") %>% unique()
+
+human_alt <- read.csv("../../data/01_metadata/human_microarray_metadata_sex.csv") %>% unique()
+
+df <- bind_rows(rat_alt %>% mutate(organism="rat"), mouse_alt %>% mutate(organism="mouse"), human_alt %>% mutate(organism="human"))
+df2 <- df %>% group_by(organism, mapped_sex) %>% summarize(n_per_group=n()) %>% ungroup()  %>% group_by(organism) %>% mutate(n_tot=sum(n_per_group)) %>% group_by(mapped_sex) %>% mutate(percent=n_per_group/n_tot) %>% ungroup() %>%
+  rename(sex=mapped_sex) %>%
+  mutate(sex=factor(sex, levels=c("female", "mixed", "male", "unknown")))
+ggplot(df2, aes(x=organism, y=percent))+geom_bar(aes(fill=sex), stat="identity") + 
+  ylab("fraction") #, stat="count")
+
+human_alt %>% head()
 human2 <- left_join(human, human_alt, by=c("sex"="annot_sex"))
 human3 <- human2 %>%
   mutate(text_sex=case_when(is.na(sex) | sex=="" ~ "unknown",

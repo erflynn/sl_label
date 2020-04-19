@@ -6,7 +6,7 @@ args <- commandArgs(trailingOnly=TRUE)
 
 prefix <- args[1]
 idx <- as.numeric(args[2])
-
+ds <- "sex"
 extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
   NUM.CHUNKS <- ceiling(length(my.list)/SIZE.CHUNK)
   end_idx <- ifelse((NUM.CHUNKS-1) == idx ,length(my.list), (idx+1)*SIZE.CHUNK)
@@ -14,7 +14,7 @@ extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
 }
 
 # prediction function, list of genes
-load(file=sprintf("data/rnaseq/%s/04_model_out/rnaseq_sl_fit.RData", prefix)) # my.lambda, fit
+load(file=sprintf("data/07_model_dat/fit_%s_rnaseq_%s.RData", prefix, ds))
 my_rows <- unique(rownames(fit$beta))
 slStudy <- function(study_id){
   my_dat <- read_csv(sprintf("data/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id))  %>% as.data.frame()
@@ -32,7 +32,7 @@ sample_df <- exp_samp %>%
 study_chunk <- extractChunk(list.studies, idx, 50)
 print("extracting")
 all_dat0 <- do.call(cbind, lapply(study_chunk, slStudy))
-all_dat <- all_dat0[,sample_df$sample_acc] # filter for appropriate ones
+all_dat <- all_dat0[,intersect(colnames(all_dat0),sample_df$sample_acc)] # filter for appropriate ones
 all_dat[is.na(all_dat)] <- 0
 num_zeros <- apply(all_dat, 1, function(x) sum(x==0))
 all_dat2 <- all_dat[num_zeros <= 0.9*ncol(all_dat),]
@@ -44,4 +44,4 @@ print("predicting")
 preds <- predict(fit, newx=x_test2, s=my.lambda, type="response")
 preds2 <- data.frame("id"=rownames(preds), "pred"=preds[,1])
   
-preds2 %>% write_csv(sprintf("data/rnaseq/%s/04_model_out/%s_rnaseq_sl_%s.csv", prefix, prefix, idx))
+preds2 %>% write_csv(sprintf("data/08_model_out/%s_rnaseq_%s_%s_sl.csv", prefix, ds, idx))

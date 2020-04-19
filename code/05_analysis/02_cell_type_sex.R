@@ -101,6 +101,8 @@ table(matched2$metadata_sex, matched2$exprsex)
 
 primary2 <- primary %>% select(acc, metadata_sex, pred, exprsex, source_type) 
 
+named_cl_df3 %>% head()
+
 
 
 table(primary2$metadata_sex, primary2$exprsex)
@@ -115,6 +117,8 @@ tissue2 %>% select(acc, metadata_sex, exprsex, pred, source_type))) %>% filter(!
   filter(!is.na(exprsex))
 df2 <- df %>% pivot_longer(c(metadata_sex, exprsex), names_to="labeling_method", values_to="sex") %>%
   mutate(labeling_method=ifelse(labeling_method=="metadata_sex", "metadata", "expression"))
+
+
 
 require("ggalluvial")
 alluvPlotSample <- function(ds){
@@ -166,23 +170,33 @@ ggplot(df3, aes(x=pred))+geom_density(aes(col=source_type))+xlab("P(male)")
 
 
 # alluvial with allele sex"
-matched3 <- matched2 %>% mutate(allele_sex=case_when(
+my_dat3 <- named_cl_df3 %>% mutate(
+  allele_sex=case_when(
   (allele_sex %in% c("female")) ~ "female",
   (allele_sex %in% c("male")) ~ "male",
   allele_sex=="both" ~ "both",
   allele_sex=="unknown" ~ "unknown",
   TRUE ~ "multi-map"
   )) %>%
-  filter(!is.na(exprsex) & !is.na(allele_sex) & !is.na(metadata_sex)) %>%
-  select(-accession, -alleles, -annot_sex, -cl)
+  mutate(
+    annot_sex=case_when(
+      (annot_sex %in% c("female")) ~ "female",
+      (annot_sex %in% c("male")) ~ "male",
+      annot_sex=="both" ~ "both",
+      annot_sex=="unknown" ~ "unknown",
+      TRUE ~ "multi-map"
+    )) %>%
+  filter(!is.na(exprsex) & !is.na(allele_sex) & !is.na(annot_sex)) %>%
+  select(-accession, -alleles, -metadata_sex, -cl)
 
 
-flow_freq_counts <- matched3 %>% filter(source_type=="cell_line") %>%
+flow_freq_counts <- my_dat3 %>% #filter(source_type=="cell_line") %>%
   ungroup() %>%
-  rename(metadata=metadata_sex, expression=exprsex, amelogenin=allele_sex) %>%
+  filter(!is.na(exprsex) & exprsex!="") %>%
+  rename(metadata=annot_sex, expression=exprsex, amelogenin=allele_sex) %>%
   group_by(metadata, expression, amelogenin) %>% 
   mutate(Freq=n()) %>% 
-  select(-acc, -source_type, -pred) %>% 
+  select(-acc, -pred) %>% 
   unique() %>%
   ungroup() %>%
   mutate(row_id=1:n()) %>%
@@ -190,7 +204,8 @@ flow_freq_counts <- matched3 %>% filter(source_type=="cell_line") %>%
   mutate(row_id=as.factor(row_id), 
          labeling_method=factor(labeling_method, levels=c("metadata", "amelogenin", "expression")),
          sex=as.factor(sex)) %>%
-  unique() 
+  unique() %>%
+  mutate(sex=factor(sex, levels=c("female","male", "multi-map", "unknown", "both")))
 
 ggplot(flow_freq_counts,
        aes(x = labeling_method, 
