@@ -1,6 +1,6 @@
 # grab the predicted 
 require('tidyverse')
-prefix <- "mouse"
+prefix <- "human"
 data_type <- "microarray"
 ds <- "sex"
 

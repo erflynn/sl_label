@@ -51,44 +51,45 @@ set.seed(114)
 
 no_cell <- metadata %>% filter(cl_line=="" | cl_line=="--")  %>% select(acc)
 
-cell <- metadata %>% filter(cl_line!="" & cl_line!="--") %>% right_join(refine_mapped %>% select(gsm, accession), by=c("acc"="gsm")) %>%
+cell <- metadata %>% filter(cl_line!="" & cl_line!="--") %>% 
+  right_join(refine_mapped %>% select(gsm, accession), by=c("acc"="gsm")) %>%
   filter(!is.na(cl_line)) %>% select(acc, cl_line, accession)
 
 pos_cl <- cell %>% left_join(mapping, by=c("acc"="sample_acc")) %>% select(-cl_line, -accession) 
 neg_cl <- no_cell %>% left_join(mapping, by=c("acc"="sample_acc"))  
 
-#%>% 
-#  bind_rows(refine_mapped2 %>% select(gsm, accession))
-# 
-# both_cell <- no_cell %>% anti_join(cell, by=c("acc"="gsm")) %>% 
-#   select(acc) %>%  mutate(cl="", accession="") %>%
-#   rename(gsm=acc) %>% select(accession, cl, gsm) %>%
-#   bind_rows(cell) %>%
-#   rename(cl_descript_sample=cl, cl_acc_sample=accession) %>%
-#   mutate(is_sample_cl=ifelse(cl_acc_sample=="" & cl_descript_sample=="", FALSE, TRUE))
-# 
-# # we also want the metadata to -NOT- have CL mentions
-# study_sample_cl <- full_join(cl_stud %>% select(gse, accession), mapping, by=c("gse"="study_acc"))
-# study_cl2 <- study_sample_cl %>% select(gse, sample_acc, everything()) %>% 
-#   rename(cl_acc_study=accession, gsm=sample_acc) %>%
-#   mutate(is_study_cl=ifelse(is.na(cl_acc_study), FALSE, TRUE))
-# 
-# # randomly sample some of these
-# 
-# if (data_type=="microarray"){
-#   cl_annot_all <- inner_join(both_cell, study_cl2, by="gsm") %>% 
-#     inner_join(metadata %>% select(acc, f_idx, idx), by=c("gsm"="acc")) %>%
-#     select(gse, gsm, is_sample_cl, is_study_cl, f_idx, idx) 
-# } else {
-#   cl_annot_all <- inner_join(both_cell, study_cl2, by="gsm") %>% 
-#     inner_join(metadata %>% select(acc), by=c("gsm"="acc")) %>%
-#     select(gse, gsm, is_sample_cl, is_study_cl) 
-# }
-# 
-# 
-# cl_annot_all %>% write_csv(sprintf("data/02_labeled_data/%s_%s_cl_annot_info.csv", prefix, data_type2))
-# neg_cl <- cl_annot_all %>% filter(!is_sample_cl & !is_study_cl) %>% unique() #400k
-# pos_cl <- cl_annot_all %>% filter(is_sample_cl) %>% unique() #88k
+refine_mapped %>% 
+  bind_rows(refine_mapped2 %>% select(gsm, accession))
+
+both_cell <- no_cell %>% anti_join(cell, by=c("acc"="gsm")) %>%
+  select(acc) %>%  mutate(cl="", accession="") %>%
+  rename(gsm=acc) %>% select(accession, cl, gsm) %>%
+  bind_rows(cell) %>%
+  rename(cl_descript_sample=cl, cl_acc_sample=accession) %>%
+  mutate(is_sample_cl=ifelse(cl_acc_sample=="" & cl_descript_sample=="", FALSE, TRUE))
+
+# we also want the metadata to -NOT- have CL mentions
+study_sample_cl <- full_join(cl_stud %>% select(gse, accession), mapping, by=c("gse"="study_acc"))
+study_cl2 <- study_sample_cl %>% select(gse, sample_acc, everything()) %>%
+  rename(cl_acc_study=accession, gsm=sample_acc) %>%
+  mutate(is_study_cl=ifelse(is.na(cl_acc_study), FALSE, TRUE))
+
+# randomly sample some of these
+
+if (data_type=="microarray"){
+  cl_annot_all <- inner_join(both_cell, study_cl2, by="gsm") %>%
+    inner_join(metadata %>% select(acc, f_idx, idx), by=c("gsm"="acc")) %>%
+    select(gse, gsm, is_sample_cl, is_study_cl, f_idx, idx)
+} else {
+  cl_annot_all <- inner_join(both_cell, study_cl2, by="gsm") %>%
+    inner_join(metadata %>% select(acc), by=c("gsm"="acc")) %>%
+    select(gse, gsm, is_sample_cl, is_study_cl)
+}
+
+
+cl_annot_all %>% write_csv(sprintf("data/02_labeled_data/%s_%s_cl_annot_info.csv", prefix, data_type2))
+neg_cl <- cl_annot_all %>% filter(!is_sample_cl & !is_study_cl) %>% unique() #400k
+pos_cl <- cl_annot_all %>% filter(is_sample_cl) %>% unique() #88k
 
 pos_cl_drop <- drop_greater_n(pos_cl %>% select(acc, study_acc) %>% rename(grp=study_acc), 5, 2000) 
 neg_cl_drop <- drop_greater_n(neg_cl %>% select(acc, study_acc) %>% rename(grp=study_acc), 5, 2000)
