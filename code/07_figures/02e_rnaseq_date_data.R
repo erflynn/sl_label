@@ -36,7 +36,7 @@ date_data <- dbGetQuery(sra_con,
 save(date_data, file="sra_date.RData")
 dbDisconnect(sra_con)
 
-load("data/sra_date.RData") # --> date_data
+load("data/dates/sra_date.RData") # --> date_data
 
 # -- problem: the `submission_date` and `run_date` fields have high missingness
 list_rnaseq_samples <- (comb_metadata %>% filter(data_type=="rnaseq"))$sample_acc
@@ -140,6 +140,8 @@ table(is.na(study_ds$study_attribute))
 dbDisconnect(sra_con)
 
 # -- try parsing the sample attributes for dates -- #
+load("data/dates/sample_attr_sra.RData") # --> sample_ds
+
 ds <- sample_ds %>%
   filter(!is.na(sample_attribute)) %>%
   as_tibble() %>%

@@ -1,4 +1,4 @@
-# 02a_microarray_date_data.R
+# 02a_geo_date_data.R
 # E Flynn
 # 07/20/2020
 #
@@ -29,18 +29,20 @@ table(str_detect(list_studies, "GSE"))
 # FALSE  TRUE 
 # 260  19963 
 non_gse_studies <- list_studies[!str_detect(list_studies, "GSE")]
+non_gse_studies %>% as_tibble() %>% rename(study=value) %>% write_csv("data/dates/non_gse.csv")
+
 
 con <- dbConnect(SQLite(), "../labeling/GEOmetadb.sqlite") # sept 23, 2019
 list_studies_str <- paste(list_studies, collapse="\',\'")
 dbListTables(con)
-res <- dbGetQuery(con, sprintf("SELECT gse.gse, submission_date FROM gse WHERE gse.gse IN ('%s');", list_studies_str))
+study_res <- dbGetQuery(con, sprintf("SELECT gse.gse, submission_date FROM gse WHERE gse.gse IN ('%s');", list_studies_str))
 
-stopifnot(nrow(res)==length(unique(res$gse)))
-stopifnot(length(list_studies[str_detect(list_studies, "GSE")])==nrow(res))
+stopifnot(nrow(study_res)==length(unique(study_res$gse)))
+stopifnot(length(list_studies[str_detect(list_studies, "GSE")])==nrow(study_res))
 
 # no missing dates! woot
-any(is.na(res$submission_date))
-any(res$submission_date=="")
+any(is.na(study_res$submission_date))
+any(study_res$submission_date=="")
 
 # sample-level
 dbListFields(con, "gsm")
@@ -62,11 +64,7 @@ length(list_samples[str_detect(list_samples, "GSM")])
 dbDisconnect(con)
 # missing 10 GSM samples from the list of dates, not bad
 
+# SAVE THIS!
+sample_res %>% write_csv("data/dates/geo_sample_dates.csv")
+study_res %>% write_csv("data/dates/geo_study_dates.csv")
 
-# 2. Grab ArrayExpress metadata
-# https://www.ebi.ac.uk/arrayexpress/help/programmatic_access.html#Experiment_details
-# > https://www.ebi.ac.uk/arrayexpress/xml/v3/experiments/E-xxxx-nnnnn
-# > https://www.ebi.ac.uk/arrayexpress/xml/v3/experiments/E-xxxx-nnnnn/samples
-# this is XML, so will have to download and parse
-
-non_gse_studies
