@@ -1,12 +1,27 @@
-# END GOAL:
-# have these tables so we can make a figure:
+# 02h_sex_breakdown_time_fig.R
+# E Flynn
+# 07/22/2020
+#
+# Make a figure showing sex breakdown over time.
+# Relies on extracting array express (02b-d) and RNA-seq (02e-g) data first.
+#  We do not need to extract GEO data because it is already present
+# 
+# First construct these tables:
 # 1. sample | organism | data_type | sex | studies | sample_date
 # 2. study | study_date
 #
-# for now: skipping sample-level goal, and instead going to focus on just the study/study-date
+# Note: skipping sample-level goal, and instead going to focus on just the study/study-date
+# TODOs (remaining):
+# - where do mostly male + mostly female go? for now ignoring
+# - add in more tests to make sure correct
+# - make legend prettier, consider putting together?
+# - calculate a stat about change over time
+# - aggregate panel for RNA-seq + microarray?
 
 require('tidyverse')
 require('lubridate')
+require('zoo')
+
 
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 
@@ -28,24 +43,10 @@ ae_dates <- read_csv("data/dates/ae_date_info.csv") %>%
   select(-diff_yr, -update_date) %>%
   rename(study_acc=accession, date=release_date) %>%
   unique()
-#geo_dates <- read_csv("data/dates/geo_study_dates.csv") %>%
-#  rename(study_acc=gse, date=submission_date) %>%
-#  unique()
-#sra_dates <- read_csv("data/dates/sra_study_date.csv")  %>%
-#  rename(study_acc=study_accession, date=updated_date) %>%
-#  unique()
 
 sra_dates <- read_csv("data/dates/sra_study_ena.csv") %>%
   rename(study_acc=accession) %>%
   unique()
-
-#study_date_df <- geo_dates %>% bind_rows(ae_dates) %>% bind_rows(sra_dates) %>% unique()
-#stopifnot(nrow(study_date_df) == (nrow(sra_dates) + nrow(geo_dates) + nrow(ae_dates)))
-
-
-#table((geo_dates %>% left_join(rb_micro_meta, by="study_acc") %>% 
-#  mutate(date.y2 = ymd(date.y)) %>%
-#  mutate(diff_date=as.numeric(date.y2-date.x) ))$diff_date)
 
 study_dates2 <- rb_micro_meta %>% 
   mutate(date = ymd(date)) %>% 
@@ -62,8 +63,6 @@ stopifnot((length(unique(study_dates2$study_acc))-nrow(sra_dates))==length(uniqu
 
 study_sl <- read_csv("data/study_sex_lab.csv")
 
-head(study_dates2)
-head(study_sl)
 sl_study2 <- study_sl %>% left_join(study_dates2, by="study_acc") %>%
   mutate(study_sex=factor(study_sex, levels=c("female only", "mostly female", 
                                               "mixed sex", "mostly male", 
@@ -76,6 +75,7 @@ sl_study2 %>% filter(is.na(date)) %>% select(study_acc) %>% unique() %>% nrow()
 # only 18 documented are missing these data
 
 
+# -- original plot -- #
 ggplot(sl_study2, aes(x=date))+
   geom_histogram(aes( fill=study_sex), bins=15)+
   ylab("number of studies")+
@@ -85,30 +85,8 @@ ggplot(sl_study2, aes(x=date))+
   theme( panel.grid.major = element_blank(),
          panel.grid.minor = element_blank())  
 
-ggplot(sl_study2 %>% filter(label_type=="expression"), aes(x=date))+
-  geom_histogram(aes( fill=study_sex), bins=15)+
-  ylab("number of studies")+
-  xlab("date submitted")+
-  facet_grid(rows=vars(data_type), cols=vars(organism),  scales="free")+
-  theme_bw()+
-  theme( panel.grid.major = element_blank(),
-         panel.grid.minor = element_blank())  
 
-ggplot(sl_study2 %>% filter(label_type=="metadata"), aes(x=date))+
-  geom_histogram(aes( fill=study_sex), bins=15)+
-  ylab("number of studies")+
-  xlab("date submitted")+
-  facet_grid(rows=vars(data_type), cols=vars(organism),  scales="free")+
-  theme_bw()+
-  theme( panel.grid.major = element_blank(),
-         panel.grid.minor = element_blank())  
-
-# plot the fraction single sex??
-# add some sort of statistic?
-
-
-# fraction single sex
-require('zoo')
+# -- tile over time and calculate fractions -- #
 dat_plus2 <- sl_study2 %>%
   arrange(organism, data_type, label_type, study_sex,date) %>%
   mutate(value=1) %>%
@@ -137,15 +115,10 @@ dat_plus2 <- sl_study2 %>%
 
 # TODO: add in some sanity checks here!
 
-
-# fraction male-only, fraction female-only, fraction missing-metadata, fraction mixed-sex
-# human + mouse, microarray vs RNAseq + panel w total number of studies over time?
-
+# grab the frac and total data to make a figure
 dat_plus3 <- dat_plus2 %>% 
   select(organism, data_type, label_type, month3, num_studies, frac_missing, 
                      frac_mixed_sex, frac_single_sex, frac_m_only, frac_f_only)
-
-
 dat_plus_long <- dat_plus3 %>% 
   pivot_longer(cols=num_studies:frac_f_only, names_to="col_desc") %>%
   mutate(col_type=ifelse(str_detect(col_desc, "frac"), 
@@ -161,6 +134,7 @@ dat_plus_long <- dat_plus3 %>%
                                             "frac_m_only",
                                             "num_studies")))
 
+# -- make figure!! -- #
 ggplot(dat_plus_long, aes(x=month3, y=value))+
   geom_line(aes(lty=data_type, col=col_desc))+
   facet_grid(vars(col_type), vars(organism), scales="free")+
@@ -174,7 +148,11 @@ ggplot(dat_plus_long, aes(x=month3, y=value))+
 # // TODO reorder legend, colors? make this two plots?
 # // TODO: should there be an aggregate panel?
 ggsave("figures/paper_figs/fig2.png" )
-# fraction male only and single sex
+
+
+
+
+# -- extra exploratory figs -- #
 ggplot(dat_plus2, aes(x=month3, y=rat_single_sex))+
   geom_line(aes(col=organism))+
   facet_grid(rows=vars(data_type), cols=vars(label_type),  scales="free")+
@@ -212,14 +190,4 @@ ggplot(dat_plus2, aes(x=month3, y=rat_m_only))+
   xlab("")+
   ylab("ratio of male-only to female-only")
 
-# TODO:
-# -- change colors
-# -- change axes
-# -- use different line types
-# - skip looking at metadata?
-# - what is the q?
-
-# sample level counts
-
-sl_study2 %>% group
 

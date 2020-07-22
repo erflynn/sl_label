@@ -202,18 +202,22 @@ by_study <- by_sample %>%
          num_m=sum(sex_lab=="male", na.rm=TRUE))
 
 by_study2 <- by_study %>%
+  mutate(num_present=num_f+num_m) %>%
   mutate(study_sex=case_when(
     num_tot==num_f ~ "female only",
     num_tot==num_m ~ "male only",
-    num_tot > 2*(num_f+num_m) ~ "unknown",
-    num_m < 0.2*num_tot & num_f > 0.6*num_tot ~ "mostly female",
-    num_f < 0.2*num_tot & num_m > 0.6*num_tot ~ "mostly male",
+    num_tot <= 60 & (0.5*num_tot > num_present) ~ "unknown",
+    num_tot > 60 & (num_present < 30 ) ~ "unknown",
+    num_f > 0.8*num_present ~ "mostly female",
+    num_m > 0.8*num_present ~ "mostly male",
     TRUE ~ "mixed sex"
   )) %>%
   mutate(study_sex=factor(study_sex, levels=c("female only", "mostly female", 
                                               "mixed sex", "mostly male", 
                                               "male only", "unknown")))
 
+by_study2 %>% write_csv("data/study_sex_lab.csv")
+# SAVE THE BY-STUDY COUNTS!
 
 ggplot(by_study2 %>% 
          rename(`study sex`=study_sex), 
@@ -242,7 +246,10 @@ counts_sample <- by_sample %>%
 counts_sample_table <- counts_sample %>% 
   pivot_wider(names_from=sex_lab, values_from=n, values_fill = list(n=0)) %>%
   mutate(num_samples=(female+male+mixed+unknown)) %>%
-  mutate(frac_missing=unknown/num_samples) 
+  mutate(frac_missing=unknown/num_samples,
+         frac_female=female/num_samples,
+         frac_male=male/num_samples) 
+
 
 counts_sample_table %>%
   write_csv("tables/s1a_sample_sex_counts.csv")
@@ -257,8 +264,16 @@ counts_study_table <- counts_study %>%
   mutate(num_studies=sum(n)) %>%
   ungroup() %>%
   pivot_wider(names_from=study_sex, values_from=n, values_fill = list(n=0)) %>%
-  mutate(frac_missing=unknown/num_studies) %>%
+  
+  # // TODO: where does mostly go here?? should fraction be of labeled studies?
+  mutate(frac_missing=unknown/num_studies,
+         frac_male_only=`male only`/num_studies,
+         frac_female_only=`female only`/num_studies,
+         frac_mixed_sex=`mixed sex`/num_studies,
+         frac_single_sex=(`male only`+`female only`)/num_studies) %>%
   select(-num_studies, -frac_missing, everything(), num_studies, frac_missing) 
+
+# // TODO: format sig figs
 
 counts_study_table %>%  
   write_csv("tables/s1b_study_sex_counts.csv")

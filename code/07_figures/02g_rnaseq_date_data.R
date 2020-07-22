@@ -20,6 +20,7 @@
 #  - look at sample vs study
 #  - use NER for dates?
 
+# -- UPDATE: SECOND PART IS DEPRECATED!! Using ENA -- #
 
 # when we look in SRAdb, there are lots of missing data
 # instead using ENA, only 18 missing
