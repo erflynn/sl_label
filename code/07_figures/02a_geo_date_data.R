@@ -10,6 +10,8 @@
 # 1. sample | organism | data_type | sex | studies | sample_date
 # 2. study | study_date
 
+# -- UPDATE: we don't need to query GEOmetadb for this info! ignore. -- #
+
 require('tidyverse')
 require('GEOmetadb')
 
