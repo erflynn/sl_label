@@ -1,7 +1,20 @@
-# Plot the cell line breakdown and sample switching
+# 03_cell_breakdown.R
+# E Flynn
+# 7/27/2020
+#
+# Plot the cell line breakdown and sample switching.
+#
+# Tables created (3)
+# Figures created (3)
+#
+# TODOs:
+# - alluvial diagram w/o amelogenin
+# - ADD MOUSE
+# - add a figure illustrating sex breakdown separated by tissue
+# - cell line cluster densities
+# - extract addtl info on # reports from cellosaurus...
+# - divide this file into multiple!
 
-# table:
-#  sample | metadata_sex | expr_sex | cell_line(y/n) | cl_acc | cl_name | cl_annot_sex | cl_allele_sex |
 
 require('tidyverse')
 
@@ -42,7 +55,7 @@ mu_s2 <- mu_s %>% mutate(source_type=case_when(
 
 table(mu_s2$source_type)
 
-# SAVE THIS FILE!!!
+# Table (1): sample source type
 mu_s2 %>% write_csv("data/sample_source_type.csv")
 stopifnot(nrow(human_metadata)==nrow(mu_s2))
 
@@ -52,7 +65,75 @@ mu_s3 <- mu_s2 %>%
   left_join(human_metadata, by=c("sample_acc")) %>%
   select(sample_acc, organism, data_type, everything()) 
 
+### -- cell line vs tissue sex breakdown -- ##
+sample_type <- read_csv("data/sample_source_type.csv")
+human_s <- comb_metadata %>% filter(organism=="human")
+sex_lab_w_source <-sample_type %>% 
+  select(acc, source_type) %>% 
+  rename(sample_acc=acc) %>%
+  left_join(human_s) %>%
+  select(-organism,-platform)
 
+
+frac_dat <- sex_lab_w_source %>% 
+  select(source_type, data_type, expr_sex) %>%
+  filter(!is.na(expr_sex)) %>%
+  mutate(source_type2=case_when(
+    source_type=="tissue" ~ "tissue",
+    source_type %in% c("named_cl", "unnamed_cl") ~ "cell line",
+    source_type=="primary_cells" ~ "primary cells",
+    TRUE ~ "other"
+  )) %>%
+  group_by(data_type) %>% 
+  mutate(total_f=sum(expr_sex=="female"),
+         total_m=sum(expr_sex=="male")) %>%
+  ungroup() %>%
+  group_by(source_type2, data_type) %>%
+  mutate(num_f=sum(expr_sex=="female"),
+         num_m=sum(expr_sex=="male")) %>%
+  mutate(frac_f=num_f/(total_f+total_m),
+         frac_m=num_m/(total_f+total_m)) %>%
+  select(-source_type, -expr_sex) %>%
+  unique() %>% 
+  ungroup()
+
+counts_w_aggreg <- frac_dat %>% 
+  select(-frac_f, -frac_m) %>%
+  pivot_longer(cols=c("total_f", "num_f")) %>%
+  mutate(dat_type=ifelse(name=="total_f", "aggregate", "separate")) %>%
+  rename("num_f"=value) %>%
+  select(-name) %>%
+  pivot_longer(cols=c("total_m", "num_m")) %>%
+  mutate(dat_type2=ifelse(name=="total_m", "aggregate", "separate")) %>%
+  rename("num_m"=value) %>%
+  select(-name) %>%
+  filter(dat_type==dat_type2) %>%
+  select(-dat_type2) %>%
+  pivot_longer(cols=c("num_f", "num_m"), names_to="expr_sex", values_to="count") %>%
+  mutate(comb_col=paste(source_type2, dat_type, sep=","))
+
+counts_w_aggreg2 <- counts_w_aggreg %>%
+  filter(str_detect(comb_col, "separate") |comb_col=="tissue,aggregate") %>%
+  mutate(comb_col=str_replace_all(comb_col, ",separate", "")) %>%
+  mutate(comb_col=ifelse(comb_col=="tissue,aggregate", "aggregate", comb_col)) %>%
+  select(-source_type2, -dat_type) %>%
+  mutate(source_type=factor(comb_col, levels=c("aggregate", "cell line", "tissue", "primary cells", "other"))) 
+
+
+# # Figure (0) - breakdown
+# ggplot(sex_lab_w_source %>% 
+#          filter(source_type %in% 
+#                   c("tissue", "named_cl") &
+#                   !is.na(expr_sex)),
+#        aes(x=source_type))+
+#   geom_bar(aes(fill=expr_sex))+
+#   facet_grid(data_type~.)
+# 
+# # distributions
+# ggplot(sex_lab_w_source %>%
+#          filter(source_type %in% c("tissue", "named_cl", "unnamed_cl", "primary_cells")), 
+#        aes(x=p_male, group=source_type, col=source_type))+
+#   geom_density()
 
 
 # --- CELL LINE SEX LABELS --- #
@@ -74,6 +155,9 @@ cell_sex <- cell_df %>%
   )) %>%
   rename(annot_sex=sex) %>%
   mutate(primary_accession=tolower(primary_accession))
+
+# Table (1) - cell line sex labels
+# //TODO: move this
 cell_sex %>% write_csv("data/ref_cell_line_sex_labels.csv")
 
 cell_sex2 <- cell_sex %>%
@@ -125,6 +209,8 @@ samples_cl_sl <- mu_s3 %>% left_join(cl_lab_comb %>% select(-cl_name), by="cl_ac
   mutate(cl_acc_split=cl_acc) %>% # split column has things properly formatted
   select(-cl_acc_split)
 stopifnot(length(unique(samples_cl_sl$sample_acc))==nrow(samples_cl_sl))
+
+# Table (2) - samples mapped to cell lines with sex labels
 samples_cl_sl %>% write_csv("data/cl_sex_mapped.csv")
 
 cl_expr <- samples_cl_sl %>% 
@@ -136,11 +222,11 @@ cl_expr <- samples_cl_sl %>%
   unique() %>%
   mutate(frac=n/tot) %>%
   ungroup()
-cl_expr # <-- this is the confusion matrix for percents
+cl_expr # <-- this is the confusion matrix for percents that switch!
 
 
-# -- PLOT -- #
-
+# -- Figure (1) -- #
+# alluvial diagram for cell line sex switching 
 require("ggalluvial")
 my_dat3 <- samples_cl_sl %>% 
   filter(source_type=="named_cl") %>%
@@ -201,9 +287,16 @@ ggplot(flow_freq_counts,
                       panel.grid.minor = element_blank()) + 
   theme(legend.position = "none") 
 
-###
-#SAVE
-# cell line level
+# ggsave()
+
+
+# --- rearrange the sample level labels to cell line level labels -- #
+# add columns for
+#  - number of female or male samples per cl line
+#  - avg/se for sex labeling score
+#  - condensed expression sex labels (e.g. "female" or "female;male")
+#  - condensed annotation labels
+#  - condensed reported sex
 cl_level_lab <- samples_cl_sl %>% 
   filter(!is.na(cl_acc)) %>%
   select(-sample_acc, -organism, 
@@ -213,7 +306,7 @@ cl_level_lab <- samples_cl_sl %>%
   mutate(num_f=sum(expr_sex=="female", na.rm=TRUE), 
          num_m=sum(expr_sex=="male", na.rm=TRUE),
          num_unknown=sum(is.na(expr_sex)),
-         avg_p_male=mean(p_male, na.rm=TRUE),
+         avg_p_male=mean(p_male, na.rm=TRUE), 
          se_p_male=sd(p_male, na.rm=TRUE),
          expr_sex=paste(sort(unique(expr_sex[!is.na(expr_sex)])), collapse=";"),
          cl_annot_sex=paste(sort(unique(cl_annot_sex[cl_annot_sex!="unknown"])), collapse=";"),
@@ -229,15 +322,18 @@ cl_level_lab %>%
   filter(!str_detect(cl_acc, ";")) %>% 
   arrange(cl_annot_sex, frac_f) 
 
+# remove the multi-mapping to take a quick look
 single_map <- cl_level_lab %>% 
   filter(!str_detect(cl_acc, ";"))
-
 table(single_map$cl_annot_sex, single_map$expr_sex)
 
 stopifnot(length(unique(cl_level_lab$cl_acc))==nrow(cl_level_lab))
 
 
-
+# add additional columns to the cell line level data
+#  - previously documented changes (`annot_all`)
+#  - number of samples
+#  - 95% ci 
 df <- cl_level_lab %>% 
   filter(!str_detect(cl_acc, ";")) %>%
   mutate(cl_annot_sex=ifelse(cl_annot_sex=="", 
@@ -265,8 +361,7 @@ table(df$annot_all, df$expr_sex)
 
 # high confidence switching
 # We define high confidence switching as a 95% CI for 
-# cell line > 0.6 or < 0.4.
-
+# cell line scores > 0.6 or < 0.4.
 df2 <- df %>%
   group_by(annot_all) %>%
   mutate(n=n()) %>%
@@ -276,6 +371,11 @@ df2 <- df %>%
   ungroup() %>%
   mutate(annot_all=sprintf("%s\n(n=%s)", annot_all, n))
 
+
+# Figure (2) #
+# ---- SUPPLEMENTARY FIGURE A ---- #
+# how does avg expression score correspond to to donor sex
+# and reported sex?
 ggplot(df2,
        aes(y=avg_p_male, x=1))+
   geom_boxplot(outlier.alpha=0)+
@@ -283,12 +383,6 @@ ggplot(df2,
              position=position_jitter(0.5), 
              alpha=0.1)+
   scale_size(breaks=c(1,5,10,25, 50, 100))+
-  # geom_errorbar(aes(ymin=avg_p_male-se_p_male, 
-  #                   ymax=avg_p_male+se_p_male,
-  #                   col=cl_annot_sex), 
-  #               position=position_jitter(0.5), 
-  #               width=0.01,
-  #               alpha=0.1)+
   theme_bw()+
   theme(panel.background = element_blank(),
         panel.grid.major = element_blank(),
@@ -297,22 +391,26 @@ ggplot(df2,
         axis.ticks.x=element_blank())+
   ylim(c(0,1))+
   ylab("Average P(male)")+
-  xlab("annotated sex > amelogenin sex")+
+  xlab("donor sex > reported sex")+
   geom_hline(yintercept=0.5, lty=2, col="gray")+
   facet_grid(.~annot_all)
 # number of cell lines in each
+# // TODO: 
+#  - highlight validation vs novelty?
+#  - deal w tiny categories
 
 
-
-# interesting: 
+# we found novel data
 #  male>male & p_male < 0.5
 #  male>unknown & p_male < 0.5
-#
 #  female>unknown & p_male > 0.5
 #  female>female & p_male > 0.5
 
-# add a SWITCH CATEGORY
-df_switch = df %>%
+# add a cell line switching category
+#  - hc_switch: switching with 95% CI > 0.6 or < 0.4
+#  - hc_no_switch: no switching with 95% CI > 0.6 or < 0.4
+#  - some_switch: more than one sample of the alternate sex
+df_switch <- df %>%
   mutate(switching_category=case_when(
     num_s <= 3 ~ "insufficient samples",
     (cl_annot_sex=="female" & ci_l > 0.6) | 
@@ -335,49 +433,37 @@ table(df_switch2$switching_category, df_switch2$doc_switch)
 
 table(df_switch2$switching_category, df_switch2$cl_annot_sex)
 table(df_switch2$switching_category, df_switch2$cl_annot_sex)/nrow(df_switch2)
-# look at the distribtuion of "some_switch"
-
-samples_cl_sl %>% filter(!is.na(cl_acc)) %>% select(cl_acc, p_male) %>% 
-  right_join(df_switch2 %>% select(cl_acc, num_s, frac_f, cl_annot_sex, 
-                                   switching_category, doc_switch), by="cl_acc") %>%
-  filter(switching_category=="some_switch") %>%
-  ggplot(aes(x=p_male))+geom_histogram()+facet_grid(cl_annot_sex~.)
-
-df_switch2 %>% filter(switching_category=="some_switch") %>%
-  ggplot(aes(x=frac_f))+geom_histogram()+facet_grid(cl_annot_sex~.)
-df_switch2 %>% filter(switching_category=="some_switch") %>%
-  ggplot(aes(y=avg_p_male, x=frac_m))+geom_point(alpha=0.5)+
-  #geom_errorbar(aes(ymin=ci_l, ymax=ci_u), alpha=0.5)+
-  facet_grid(cl_annot_sex~.)+
-  theme_bw()+
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())+
-  geom_hline(yintercept=0.5, lty=2, col="gray")+
-  geom_hline(yintercept=1, lty=1, col="gray")+
-  geom_hline(yintercept=0, lty=1, col="gray")
 
 
 
+# --- use a diptest to separate the data into uni-modal and multi-modal --- #
+# // TODO: really should be doing clustering instead of dip-test
 require('diptest')
-install.packages('diptest')
 
-dps <-samples_cl_sl %>% filter(!is.na(cl_acc)) %>% group_by(cl_acc) %>%
+# add a column with the dip-test p-value
+dps <-samples_cl_sl %>% 
+  filter(!is.na(cl_acc)) %>% 
+  group_by(cl_acc) %>%
   mutate(dip_p=dip.test(p_male)$p)
-summary(dps$dip_p)
-dip.test(samples_cl_sl %>% filter(cl_name=="hff") %>% pull(p_male))
 
-dps_some_swtch <- dps %>% filter(!is.na(cl_acc)) %>% select(cl_name, p_male, dip_p) %>% 
-  right_join(df_switch2 
-             %>% filter(frac_m > 0.40 & frac_m < 0.60) 
-             ,
+# look specifically at the some-switch data with 40-60% of of each sex
+# add a column for dip_pass (TRUE == unimodal; null hypothesis is unimodal)
+dps_some_swtch <- dps %>% 
+  filter(!is.na(cl_acc)) %>% 
+  select(cl_name, p_male, dip_p) %>% 
+  right_join(df_switch2 %>% 
+               filter(frac_m > 0.40 & frac_m < 0.60),
              by="cl_acc") %>%
   filter(switching_category=="some_switch") %>% 
   mutate(dip_pass=ifelse((dip_p > 0.05), "unimodal", "mulitmodal"))
-table(dps_some_swtch %>% select(cl_acc, dip_pass) %>% unique() %>% pull(dip_pass))
-76/(151+76)
-# dip_pass == unimodal (null hypothesis is unimodal)
+# TODO -- do we need to multiple hypothesis correct here?
 
+# breakdown uni- vs multi-modal
+table(dps_some_swtch %>% select(cl_acc, dip_pass) %>% 
+        unique() %>% pull(dip_pass))
+
+
+# -- plot what happens with some switching data -- #
 # // TODO normalize density
 dps_some_swtch %>%
   rename(`Cell line`=cl_acc) %>%
@@ -389,17 +475,36 @@ dps_some_swtch %>%
         panel.grid.minor = element_blank())+
   xlab("P(male)")
 
-df_switch2 %>% left_join(cell_sex2 %>% select(cl_acc, cl_name)) %>%
-  select(cl_acc, cl_name, cl_annot_sex, cl_allele_sex, avg_p_male,
-         se_p_male, switching_category,
-         num_s, frac_f, frac_m) %>%
-  write_csv("data/cell_line_switching.csv")
+dip_test_col <- dps %>% select(cl_acc, dip_p) %>% unique() %>% ungroup()
+stopifnot(length(unique(dip_test_col$cl_acc))==nrow(dip_test_col))
 
-# 98/2047
-hc_switch <- df %>% 
-  filter((cl_annot_sex=="female" & ci_l > 0.6) | 
-           (cl_annot_sex=="male" & ci_u < 0.4),
-         num_s > 3) %>%
+# create and save a table
+# - add the dip-test info
+# - add cell name 
+# - rename columns
+df_switch3 <- df_switch2 %>% 
+  left_join(cell_sex2 %>% select(cl_acc, cl_name)) %>%
+  left_join(dip_test_col) %>%
+  select(cl_acc, cl_name, switching_category, cl_annot_sex, cl_allele_sex, 
+         avg_p_male, se_p_male,  num_s, frac_f, frac_m, dip_p) %>%
+  rename(`Accession`=cl_acc, `Name`=cl_name, `Category`=switching_category,
+         `Annotated sex`=cl_annot_sex, `Reported sex (amel.)`=cl_allele_sex,
+         `Average P(male)`=avg_p_male, `SE P(male)`=se_p_male,
+         `Number of samples`=num_s, `Expr. fraction female`=frac_f, 
+         `Expr. fraction male`=frac_m,`Dip-test Pval`=dip_p) %>%
+  arrange(Category,`Average P(male)`)
+  
+stopifnot(nrow(df_switch3)==nrow(df_switch2))
+# Table (3) - cell lines + switching category + additional info
+df_switch3 %>%
+  write_csv("tables/supp_cl_sample_switch.csv")
+
+
+# Figure (3) #
+# ---- HC switch figure ---- #
+# add a "novel" column to denote if it's new
+hc_switch <- df_switch %>% 
+  filter(switching_category=="hc_switch") %>%
   select(-expr_sex, -frac_f, -frac_m, -se_p_male) %>%
   mutate(novel=(cl_allele_sex == "unknown" |
                    cl_allele_sex==cl_annot_sex)) %>%
@@ -408,10 +513,8 @@ hc_switch <- df %>%
   mutate(cl_name=factor(cl_name, levels=cl_name)) 
 
 table(hc_switch$novel, hc_switch$cl_annot_sex)
-#female male
-#FALSE      1   57
-#TRUE       8   32
 
+# // TODO: geom_label_repel?? for the novel ones?
 ggplot(hc_switch %>%
          mutate(num_s=ifelse(num_s > 100, 100, num_s)) %>%
          rename(`number of samples`=num_s), 
@@ -436,143 +539,3 @@ ggplot(hc_switch %>%
   geom_hline(yintercept=1, lty=1, col="gray")+
   geom_hline(yintercept=0, lty=1, col="gray")
 
-# try geom_label_repel?
-
-### STOP ###
-
-df %>% filter(annot_all %in% c("male>male", "male>unknown") &
-                avg_p_male<0.5 & num_s > 1) %>%
-  arrange(avg_p_male) %>% 
-  mutate(cl_acc=factor(cl_acc, levels=cl_acc)) %>% # 30 
-ggplot(aes(y=avg_p_male, x=cl_acc, col=annot_all))+
-  geom_point(alpha=0.2, aes(size=num_s))+
-  geom_errorbar(aes(ymin=(avg_p_male-1.96*se_p_male),
-                    ymax=(avg_p_male+1.96*se_p_male)), 
-                alpha=0.2,
-                width=0.3)+
-  theme_bw()+
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())+
-  ylab("Average P(male)")+
-  geom_hline(yintercept=0.5, lty=2, col="gray")+
-  geom_hline(yintercept=1, lty=1, col="gray")+
-  geom_hline(yintercept=0, lty=1, col="gray")
-
-
-
-df %>% filter(annot_all=="male>unknown" &
-                avg_p_male<0.5) # 98
-
-df %>% filter(annot_all=="female>female" &
-                avg_p_male>0.5) # 12
-
-df %>% filter(annot_all=="female>unknown" &
-                avg_p_male>0.5) # 31
-
-
-df %>% filter(annot_all %in% c("female>female", "female>unknown") &
-                avg_p_male>0.5 & num_s > 1) %>%
-  arrange(desc(avg_p_male)) %>% 
-  mutate(cl_acc=factor(cl_acc, levels=cl_acc)) %>%# 30 
-  ggplot(aes(y=avg_p_male, x=cl_acc, col=annot_all))+
-  geom_point(alpha=0.2, aes(size=num_s))+
-  geom_errorbar(aes(ymin=(avg_p_male-1.96*se_p_male),
-                    ymax=(avg_p_male+1.96*se_p_male)), 
-                alpha=0.2,
-                width=0.3)+
-  theme_bw()+
-  theme(panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())+
-  ylab("Average P(male)")+
-  geom_hline(yintercept=0.5, lty=2, col="gray")+
-  geom_hline(yintercept=1, lty=1, col="gray")+
-  geom_hline(yintercept=0, lty=1, col="gray")
-
-# ACK. I dont know how to best show this
-f_hc_swap <- df %>% filter(annot_all %in% c("female>female", "female>unknown") &
-                ((avg_p_male - 1.96*se_p_male) > 0.5 ) & num_s > 1)
-f_hc_swap %>% arrange(desc(avg_p_male)) %>% View()
-m_hc_swap <- df %>% filter(annot_all %in% c("male>male", "male>unknown") &
-                             ((avg_p_male + 1.96*se_p_male) < 0.5 ) & num_s > 1)
-m_hc_swap %>% arrange(avg_p_male) %>% View()
-
-ggplot(cl_level_lab %>% 
-         filter(!str_detect(cl_acc, ";")) %>%
-         group_by(cl_acc) %>%
-          mutate(annot_all=paste(cl_annot_sex,cl_allele_sex)), 
-                               aes(x=cl_annot_sex, y=avg_p_male, 
-                                   group=annot_all,
-                                   col=cl_allele_sex))+
-  geom_boxplot()
-# problem: doesn't capture n per category
-# ?? CONFUSION MATRIX??
-
-
-### STOP ###
-
-
-# // TODO: we want this on a *BY* cell line basis too!
-# // TODO: what does multi-map mean if both are the same?
-cl_data <- cl_df %>% select(cl_acc, cl_name, multi_map, cl_annot_sex, cl_allele_sex) %>% unique()
-cl_data %>% filter(multi_map=="y") %>% unique()
-
-
-
-head(multi_cl_acc_w_lab)
-
-# counts?
-counts_df <- cl_df %>% 
-#  select(-organism, -p_male, -cl_acc, -metadata_sex, -study_acc, -cl_name) %>%
-  mutate(cl_allele_sex=ifelse(multi_map=="y", "multi_map", cl_allele_sex),
-         cl_annot_sex=ifelse(multi_map=="y", "multi_map", cl_annot_sex)) %>%
-  group_by(data_type, cl_annot_sex,cl_allele_sex, expr_sex) %>%
-  count() %>%
-  ungroup() %>%
-  replace_na(list("expr_sex"="unknown"))
-
-
-present_data <- counts_df %>% 
-  filter(cl_annot_sex != "multi_map" & 
-                       cl_annot_sex != "unknown" &
-                       expr_sex != "unknown")
-(num_switching <- present_data %>% 
-  filter(cl_annot_sex=="male" &
-           expr_sex=="female") %>%
-  summarize(sum(n)))
-
-switching_prev <- present_data %>% 
-  filter(cl_annot_sex=="male" &
-           expr_sex=="female" & (expr_sex==cl_allele_sex | cl_allele_sex=="both"))
-switching_new <- present_data %>%
-  filter(cl_annot_sex=="male" &
-           expr_sex=="female" & (expr_sex!=cl_allele_sex & cl_allele_sex!="both"))
-(num_switching_prev <- switching_prev %>%
-  summarize(sum(n)))
-
-num_switching_prev/num_switching
-# this is number of samples :/ not number of cell lines
-
-
-### TOOO SLOWWWWW
-# require(tictoc) # should take like 7 mins. agh
-# tic()
-# cl_multi <- cl %>% 
-#   semi_join(cl2 %>% filter(n>1)%>% sample_n(400)) %>%
-#   group_by(sample_acc, organism, data_type, source_type, metadata_sex, expr_sex) %>%
-#   select(-p_male, -study_acc) %>%
-# #  summarize_at(vars(cl_acc, cl_name, cl_annot_sex, cl_allele_sex), 
-# #               paste(unique(.), collapse=";"))
-#   mutate_at(vars(cl_acc, cl_name, cl_annot_sex, cl_allele_sex), 
-#             ~paste(unique(.), collapse=";"))
-#   #       cl_name=paste(unique(cl_name), collapse=";"),
-#   #      cl_annot_sex=paste(unique(cl_annot_sex), collapse=";"),
-#   #      cl_allele_sex=paste(unique(cl_allele_sex), collapse=";")) 
-# toc()
-# 
-# 
-# stopifnot(nrow(samples_cell_sl2)==nrow(mu_s3))
-# samples_cell_sl2 %>% write_csv("data/cl_sample_expr_sex.csv")      
-# 
-# # --- 
