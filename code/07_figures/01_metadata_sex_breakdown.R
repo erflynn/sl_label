@@ -8,40 +8,16 @@ require('tidyverse')
 require('data.table')
 require('scales')  
 
+#  --- set up color scheme --- #
+library(RColorBrewer)
+my.l <- brewer.pal(n = 8, name = 'Set2')
+blues <- brewer.pal(9,name="Blues")
+oranges <- brewer.pal(9,name="Oranges")
+my.cols3 <- c (my.l[3],my.l[2], my.l[8])
+my.cols4 <- c (my.l[3],my.l[4],my.l[2], my.l[8])
+my.cols6 <- c (my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
 
-# # ----- 1. OVERLAP ----- #
-# 
-# # S0a/b
-# m_overlap_ids <- intersect(m_r$acc, m_m$acc) 
-# m_microarray <- setdiff(m_m$acc, m_r$acc)
-# m_rnaseq_ds_only <- setdiff(m_r$acc, m_m$acc) 
-# h_overlap_ids <- intersect(h_r$acc, h_m$acc) # 99611 overlapping IDs
-# h_microarray <- setdiff(h_m$acc, h_r$acc) # 330508
-# h_rnaseq_ds_only <- setdiff(h_r$acc, h_m$acc) # 130178
-# 
-# 
-# require('VennDiagram')
-# grid.newpage()
-# draw.pairwise.venn(
-#   area1=length(h_r$acc),
-#   area2=length(h_m$acc),
-#   cross.area=length(h_overlap_ids),
-#   category=c(sprintf("RNA-seq\n(%s)", length(h_r$acc)), 
-#                    sprintf("compendia\n(%s)", length(h_m$acc))),
-#   cat.cex=0.7
-# )
-# grid.newpage()
-# draw.pairwise.venn(
-#   area1=length(m_r$acc),
-#   area2=length(m_m$acc),
-#   cross.area=length(m_overlap_ids),
-#   category=c(sprintf("RNA-seq\n(%s)", length(m_r$acc)), 
-#              sprintf("compendia\n(%s)", length(m_m$acc))),
-#   cat.cex=0.7
-# )
-# 
-# 
-# # from here out --> microarray + rnaseq SEPARATELY
+
 
 # ---- 2. CONSTRUCT DATASETS ---- #
 constructDS <- function(organism, data_type, filter_samples){
@@ -139,7 +115,7 @@ comb_metadata <- do.call(rbind, list(human_microarray,
 stopifnot(length(unique(comb_metadata$sample_acc))==nrow(comb_metadata))
 #write_csv(comb_metadata, "data/01_metadata/combined_human_mouse_meta.csv")
 
-#comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
+comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 # ----- 3. COUNT TABLES ----- #
 # TODO: UPDATE THE COUNTS  / overlap
 
@@ -151,9 +127,11 @@ cutoff <- comb_metadata %>%
     TRUE ~ expr_sex
   ))
 
+
 ggplot(cutoff, 
        aes(x=data_type, fill=expr_sex)) +
   geom_bar()+
+  scale_fill_manual(values=my.cols4) +
   facet_grid(.~organism)
 
 
@@ -188,7 +166,8 @@ ggplot(by_sample %>%
   theme_bw() + 
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())+
-  scale_y_continuous(labels = comma)
+  scale_y_continuous(labels = comma)+
+  scale_fill_manual(values=my.cols4) 
 
 ggsave("figures/paper_figs/fig1_sample.png")
 
@@ -218,8 +197,12 @@ by_study2 <- by_study %>%
 
 by_study2 %>% write_csv("data/study_sex_lab.csv")
 # SAVE THE BY-STUDY COUNTS!
-
+#by_study2 <- read_csv("data/study_sex_lab.csv")
 ggplot(by_study2 %>% 
+         mutate(study_sex=factor(study_sex, levels=c("female only", "mostly female",
+                                                     "mixed sex", "mostly male", 
+                                                     "male only", "unknown"))) %>%
+         mutate(label_type=factor(label_type, levels=c("metadata", "expression"))) %>%
          rename(`study sex`=study_sex), 
        aes(x=data_type, fill=`study sex`)) +
   geom_bar()+
@@ -228,10 +211,96 @@ ggplot(by_study2 %>%
   ylab("Number of studies")+
   theme_bw() + 
   theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
+        panel.grid.minor = element_blank())+
+  scale_fill_manual(values=my.cols6)
 
+  
 ggsave("figures/paper_figs/fig1_study.png")
 
+# --- create alluvial diagrams x 4 --- #
+# microarray, rnaseq x human, mouse
+require('ggalluvial')
+
+flow_freq_counts <- by_sample %>%
+    select(sample_acc, label_type, sex_lab, organism, data_type) %>%
+    pivot_wider(id_cols=c(sample_acc,organism, data_type), names_from="label_type", values_from="sex_lab") %>%
+    group_by(organism, data_type, metadata, expression) %>% 
+    mutate(Freq=n()) %>% 
+    select(-sample_acc) %>% 
+    unique() %>%
+    ungroup() %>%
+    mutate(row_id=1:n()) %>%
+    pivot_longer(cols=c("metadata", "expression"), names_to="labeling_method", values_to="sex") %>%
+    mutate(sex=ifelse(sex=="unknown", "unlabeled", sex)) %>%
+    filter(sex != "mixed")   %>%
+    mutate(row_id=as.factor(row_id), 
+           labeling_method=factor(labeling_method, levels=c("metadata", "expression")),
+           sex=factor(sex, levels=c("female", "male", "unlabeled"))) %>%
+    unique() 
+  
+  
+ggplot(flow_freq_counts,
+         aes(x = labeling_method, 
+             stratum = sex, alluvium = row_id,
+             y = Freq,
+             fill = sex, label = sex)) +
+    scale_x_discrete(expand = c(.1, .1)) +
+    geom_flow() +
+    geom_stratum(alpha = .5) +
+    geom_text(stat = "stratum", size = 3) +
+    xlab("Label source")+ylab("Number of samples")+
+    theme_bw() + theme( panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank()) + 
+    theme(legend.position = "none") +
+    scale_fill_manual(values=my.cols3)+
+    scale_y_continuous(labels = comma) +
+    facet_grid(vars(data_type), vars(organism), scales="free")
+ggsave("figures/paper_figs/fig1_sample_alluvial.png")  
+
+# study level
+study_flow_freq_counts <- by_study2 %>%
+  mutate(study_sex=case_when( # for easier vis!
+    (label_type=="metadata" & study_sex=="mostly male") ~ "mixed sex",
+    (label_type=="metadata" & study_sex=="mostly female") ~ "mixed sex",
+    TRUE ~ study_sex
+    )) %>%
+  select(study_acc, label_type, study_sex, organism, data_type) %>%
+  pivot_wider(id_cols=c(study_acc,organism, data_type), names_from="label_type", 
+              values_from="study_sex") %>%
+  group_by(organism, data_type, metadata, expression) %>% 
+  mutate(Freq=n()) %>% 
+  select(-study_acc) %>% 
+  unique() %>%
+  ungroup() %>%
+  mutate(row_id=1:n()) %>%
+  pivot_longer(cols=c("metadata", "expression"), names_to="labeling_method", values_to="sex") %>%
+  mutate(sex=ifelse(sex=="unknown", "unlabeled", sex)) %>%
+  mutate(row_id=as.factor(row_id), 
+         labeling_method=factor(labeling_method, levels=c("metadata", "expression")),
+         sex=factor(sex, levels=c("female only", "mostly female",
+                                     "mixed sex", "mostly male", 
+                                     "male only", "unlabeled"))) %>%
+  unique() 
+
+
+ggplot(study_flow_freq_counts,
+         aes(x = labeling_method, 
+             stratum = sex, 
+             alluvium = row_id,
+             y = Freq,
+             fill = sex, label = sex)) +
+    scale_x_discrete(expand = c(.1, .1)) +
+    geom_flow() +
+    geom_stratum(alpha = .5) +
+    geom_text(stat = "stratum", size = 2.5) +
+    xlab("Label source")+ylab("Number of studies")+
+    theme_bw() + theme( panel.grid.major = element_blank(),
+                        panel.grid.minor = element_blank()) + 
+    theme(legend.position = "none") +
+    scale_fill_manual(values=my.cols6)+
+    facet_grid(vars(data_type), vars(organism), scales="free")
+  
+ggsave("figures/paper_figs/fig1_study_alluvial.png")
 
 
 # --- create Supplementary Table 1 --- #

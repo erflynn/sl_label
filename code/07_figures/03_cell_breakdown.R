@@ -18,6 +18,17 @@
 
 require('tidyverse')
 
+#  --- set up color scheme --- #
+library(RColorBrewer)
+my.l <- brewer.pal(n = 8, name = 'Set2')
+blues <- brewer.pal(9,name="Blues")
+oranges <- brewer.pal(9,name="Oranges")
+my.cols3 <- c(my.l[3],my.l[2], my.l[8])
+my.cols4 <- c(my.l[3],my.l[4],my.l[2],  my.l[8])
+my.cols5 <- c(my.l[3], my.l[2], my.l[4], my.l[5], my.l[8])
+my.cols6 <- c(my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
+# ------- #
+
 organism <- "human"
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 human_metadata <- comb_metadata %>% filter(organism=="human") %>% select(-platform)
@@ -212,6 +223,7 @@ stopifnot(length(unique(samples_cl_sl$sample_acc))==nrow(samples_cl_sl))
 
 # Table (2) - samples mapped to cell lines with sex labels
 samples_cl_sl %>% write_csv("data/cl_sex_mapped.csv")
+#samples_cl_sl <- read_csv("data/cl_sex_mapped.csv")
 
 cl_expr <- samples_cl_sl %>% 
   filter(cl_annot_sex %in% c("female", "male") & !is.na(expr_sex)) %>%
@@ -254,26 +266,28 @@ my_dat3 <- samples_cl_sl %>%
   
 
 
-flow_freq_counts <- my_dat3 %>%
+cl_flow_freq_counts <- my_dat3 %>%
   ungroup() %>%
   filter(!is.na(expr_sex) & expr_sex!="" ) %>%
   mutate(allele_sex=ifelse(is.na(allele_sex) | allele_sex=="", "unknown", allele_sex),
          annot_sex=ifelse(is.na(annot_sex) | annot_sex=="", "unknown", annot_sex )) %>%
-  rename(metadata=annot_sex, expression=expr_sex, amelogenin=allele_sex) %>%
+  rename(donor=annot_sex, expression=expr_sex, recorded=allele_sex) %>%
   select(-sample_acc) %>%
-  group_by(metadata, expression, amelogenin) %>% 
+  group_by(donor, expression, recorded) %>% 
   mutate(Freq=n()) %>% 
   unique() %>%
   ungroup() %>%
   mutate(row_id=1:n()) %>%
   gather(key="labeling_method", value="sex", -Freq, -row_id) %>%
   mutate(row_id=as.factor(row_id), 
-         labeling_method=factor(labeling_method, levels=c("metadata", "amelogenin", "expression")),
+         labeling_method=factor(labeling_method, levels=c("donor", "recorded", "expression")),
          sex=as.factor(sex)) %>%
   unique() %>%
-  mutate(sex=factor(sex, levels=c("female","male", "multi-map", "unknown", "both")))
+  mutate(sex=factor(sex, 
+                    levels=c("female","male", 
+                             "both", "multi-map", "unknown")))
 
-ggplot(flow_freq_counts,
+ggplot(cl_flow_freq_counts,
        aes(x = labeling_method, 
            stratum = sex, alluvium = row_id,
            y = Freq,
@@ -285,10 +299,47 @@ ggplot(flow_freq_counts,
   xlab("Label source")+ylab("Number of samples")+
   theme_bw() + theme( panel.grid.major = element_blank(),
                       panel.grid.minor = element_blank()) + 
-  theme(legend.position = "none") 
+  theme(legend.position = "none")+
+  scale_fill_manual(values=my.cols5)
 
-# ggsave()
+ggsave("figures/paper_figs/supp_fig_alluv_donor_recorded.png")
 
+# simpler alluv fig
+cl_flow_freq_counts2 <- my_dat3 %>%
+  ungroup() %>%
+  select(-allele_sex) %>%
+  filter(!is.na(expr_sex) & expr_sex!="" ) %>%
+  mutate(annot_sex=ifelse(is.na(annot_sex) | annot_sex=="", "unknown", annot_sex)) %>%
+  rename(donor=annot_sex, expression=expr_sex) %>%
+  select(-sample_acc) %>%
+  group_by(donor, expression) %>% 
+  mutate(Freq=n()) %>% 
+  unique() %>%
+  ungroup() %>%
+  mutate(row_id=1:n()) %>%
+  gather(key="labeling_method", value="sex", -Freq, -row_id) %>%
+  mutate(row_id=as.factor(row_id), 
+         labeling_method=factor(labeling_method, levels=c("donor", "expression")),
+         sex=as.factor(sex)) %>%
+  unique() %>%
+  mutate(sex=factor(sex, 
+                    levels=c("female","male", "multi-map", "unknown")))
+
+ggplot(cl_flow_freq_counts2,
+       aes(x = labeling_method, 
+           stratum = sex, alluvium = row_id,
+           y = Freq,
+           fill = sex, label = sex)) +
+  scale_x_discrete(expand = c(.1, .1)) +
+  geom_flow() +
+  geom_stratum(alpha = .5) +
+  geom_text(stat = "stratum", size = 3) +
+  xlab("Label source")+ylab("Number of samples")+
+  theme_bw() + theme( panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank()) + 
+  theme(legend.position = "none")+
+  scale_fill_manual(values=c(my.cols5[1], my.cols5[2],my.cols5[4], my.cols5[5]))
+ggsave("figures/paper_figs/fig_alluv_cl_simple.png")
 
 # --- rearrange the sample level labels to cell line level labels -- #
 # add columns for
@@ -376,10 +427,23 @@ df2 <- df %>%
 # ---- SUPPLEMENTARY FIGURE A ---- #
 # how does avg expression score correspond to to donor sex
 # and reported sex?
-ggplot(df2,
+
+#  male>male & p_male < 0.5
+#  male>unknown & p_male < 0.5
+#  female>unknown & p_male > 0.5
+#  female>female & p_male > 0.5
+ggplot(df2 %>%
+         mutate(
+           `ychr loss`=factor(case_when(
+           (cl_allele_sex=="male" & `annotated sex`=="male" & avg_p_male < 0.5) ~ "novel",
+           (cl_allele_sex=="unknown" & `annotated sex`=="male" & avg_p_male < 0.5) ~ "novel",
+           (cl_allele_sex=="female" & `annotated sex`=="male" & avg_p_male < 0.5) ~ "documented",
+           (cl_allele_sex=="both" & `annotated sex`=="male" & avg_p_male < 0.5 )~ "documented",
+           TRUE ~ "N/A"
+         ), levels=c("documented", "novel", "N/A"))),
        aes(y=avg_p_male, x=1))+
   geom_boxplot(outlier.alpha=0)+
-  geom_point(aes(size=`number of samples`, col=`annotated sex`), 
+  geom_point(aes(size=`number of samples`, col=`ychr loss`),
              position=position_jitter(0.5), 
              alpha=0.1)+
   scale_size(breaks=c(1,5,10,25, 50, 100))+
@@ -393,10 +457,11 @@ ggplot(df2,
   ylab("Average P(male)")+
   xlab("donor sex > reported sex")+
   geom_hline(yintercept=0.5, lty=2, col="gray")+
-  facet_grid(.~annot_all)
-# number of cell lines in each
+  facet_grid(.~annot_all)+
+  scale_color_manual(values=c("blue", "purple", "black"))
+
+ggsave("figures/paper_figs/supp_cl_reported_donor.png")
 # // TODO: 
-#  - highlight validation vs novelty?
 #  - deal w tiny categories
 
 
@@ -506,8 +571,9 @@ df_switch3 %>%
 hc_switch <- df_switch %>% 
   filter(switching_category=="hc_switch") %>%
   select(-expr_sex, -frac_f, -frac_m, -se_p_male) %>%
-  mutate(novel=(cl_allele_sex == "unknown" |
-                   cl_allele_sex==cl_annot_sex)) %>%
+  mutate(novel=case_when(cl_allele_sex == "unknown" |
+                   cl_allele_sex==cl_annot_sex ~ "novel",
+         TRUE ~ "documented")) %>%
   arrange(avg_p_male) %>% 
   left_join(cell_sex2 %>% select(cl_acc, cl_name)) %>%
   mutate(cl_name=factor(cl_name, levels=cl_name)) 

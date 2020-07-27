@@ -22,8 +22,25 @@ require('tidyverse')
 require('lubridate')
 require('zoo')
 
+#  --- set up color scheme --- #
+library(RColorBrewer)
+my.l <- brewer.pal(n = 8, name = 'Set2')
+blues <- brewer.pal(9,name="Blues")
+oranges <- brewer.pal(9,name="Oranges")
+my.cols3 <- c (my.l[3],my.l[2], my.l[8])
+my.cols4 <- c (my.l[3],my.l[4],my.l[2], my.l[8])
+my.cols6 <- c (my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
+# ------- #
+
 
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
+
+list_studies <- comb_metadata %>%
+  select(study_acc) %>%
+  unique() %>%
+  separate_rows(study_acc, sep=";") %>%
+  unique() %>%
+  pull()
 
 h_metadata <- read.csv("data/01_metadata/human_experiment_metadata.csv", stringsAsFactors = FALSE) %>%
   as_tibble() %>%
@@ -35,7 +52,9 @@ m_metadata <- read.csv("data/01_metadata/mouse_experiment_metadata.csv", strings
   filter(study_acc %in% list_studies) %>%
   select(study_acc, date)
 
-rb_micro_meta <- h_metadata %>% bind_rows(m_metadata) %>% mutate(date=ymd_hms(date))
+rb_micro_meta <- h_metadata %>% 
+  bind_rows(m_metadata) %>% 
+  mutate(date=lubridate::ymd_hms(date))
 
 
 
@@ -49,7 +68,7 @@ sra_dates <- read_csv("data/dates/sra_study_ena.csv") %>%
   unique()
 
 study_dates2 <- rb_micro_meta %>% 
-  mutate(date = ymd(date)) %>% 
+  mutate(date = lubridate::ymd(date)) %>% 
   unique() %>%
   filter(!is.na(date)) %>% 
   bind_rows(ae_dates) %>% 
@@ -58,9 +77,11 @@ study_dates2 <- rb_micro_meta %>%
   unique()
 
 stopifnot(length(unique(study_dates2$study_acc))==nrow(study_dates2))
+study_dates2 %>% write_csv("data/study_dates.csv")
 # check AE filled in missing
-stopifnot((length(unique(study_dates2$study_acc))-nrow(sra_dates))==length(unique(rb_micro_meta$study_acc)))
+#stopifnot((length(unique(study_dates2$study_acc))-nrow(sra_dates))==length(unique(rb_micro_meta$study_acc)))
 
+study_dates2 <- read_csv("data/study_dates.csv")
 study_sl <- read_csv("data/study_sex_lab.csv")
 
 sl_study2 <- study_sl %>% left_join(study_dates2, by="study_acc") %>%
@@ -129,27 +150,29 @@ dat_plus_long <- dat_plus3 %>%
            (label_type=="metadata" & col_desc=="frac_missing")) %>%
   filter(col_desc != "frac_single_sex") %>%
   mutate(col_desc=factor(col_desc, levels=c("frac_f_only", 
-                                            "frac_missing",
                                             "frac_mixed_sex", 
                                             "frac_m_only",
+                                            "frac_missing",
                                             "num_studies")))
 
 # -- make figure!! -- #
-ggplot(dat_plus_long, aes(x=month3, y=value))+
-  geom_line(aes(lty=data_type, col=col_desc))+
-  facet_grid(vars(col_type), vars(organism), scales="free")+
+ggplot(dat_plus_long %>% 
+         mutate(organism=sprintf("%s - %s", organism, data_type)) %>%
+         mutate(organism=factor(organism, levels=c("human - microarray", 
+                                                   "mouse - microarray",
+                                                   "human - rnaseq", 
+                                                   "mouse - rnaseq"))), 
+       aes(x=month3, y=value))+
+  geom_line(aes(col=col_desc))+
+  facet_grid(vars(col_type), vars(organism), scales="free_y")+
   theme_bw()+
-  
   theme( panel.grid.major = element_blank(),
          panel.grid.minor = element_blank(),
          legend.title = element_blank()) +
+  scale_color_manual(values=c(my.cols4, "#000000"))+
   xlab("")+
   ylab("")
-# // TODO reorder legend, colors? make this two plots?
-# // TODO: should there be an aggregate panel?
-ggsave("figures/paper_figs/fig2.png" )
-
-
+ggsave("figures/paper_figs/supp_fig_time_all.png" )
 
 
 # -- extra exploratory figs -- #
