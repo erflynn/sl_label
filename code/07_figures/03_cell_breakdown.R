@@ -8,10 +8,9 @@
 # Figures created (3)
 #
 # TODOs:
-# - alluvial diagram w/o amelogenin
-# - ADD MOUSE
 # - add a figure illustrating sex breakdown separated by tissue
 # - cell line cluster densities
+# - check on mouse results - are they ok?
 # - extract addtl info on # reports from cellosaurus...
 # - divide this file into multiple!
 
@@ -29,26 +28,43 @@ my.cols5 <- c(my.l[3], my.l[2], my.l[4], my.l[5], my.l[8])
 my.cols6 <- c(my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
 # ------- #
 
-organism <- "human"
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
-human_metadata <- comb_metadata %>% filter(organism=="human") %>% select(-platform)
+
 
 # --- CELL LINE LABELS --- #
 compendia_cl <- read_csv("data/02_labeled_data/human_compendia_sample_cl.csv")
 rnaseq_cl <- read_csv("data/02_labeled_data/human_rnaseq_sample_cl.csv")
 # // TODO: aren't there more sample CL files??
 
-cl_lab_unique <- bind_rows(compendia_cl, rnaseq_cl) %>% unique() # 63843
+m_compendia_cl <- read_csv("data/02_labeled_data/mouse_compendia_sample_cl.csv")
+m_rnaseq_cl <- read_csv("data/02_labeled_data/mouse_rnaseq_sample_cl.csv")
+
+cl_lab_unique <- bind_rows(compendia_cl, 
+                           rnaseq_cl, 
+                           m_rnaseq_cl, 
+                           m_compendia_cl) %>% unique() # 63843
 
 # ---- SAMPLE SOURCE TYPE ---- #
-sample_metadata <- read.csv(sprintf("data/01_metadata/%s_metadata.csv", organism))
-rnaseq_sample_metadata <- read.csv(sprintf("data/01_metadata/%s_rnaseq_sample_metadata.csv", organism))
-meta_unique <- sample_metadata %>% select(acc, cl_line, part, title) %>% bind_rows(
-  rnaseq_sample_metadata %>% select(acc, cl_line, part, title)) %>%
+sample_metadata <- read.csv("data/01_metadata/human_metadata.csv")
+rnaseq_sample_metadata <- read.csv("data/01_metadata/human_rnaseq_sample_metadata.csv")
+m_sample_metadata <- read.csv("data/01_metadata/mouse_metadata.csv")
+m_rnaseq_sample_metadata <- read.csv("data/01_metadata/mouse_rnaseq_sample_metadata.csv")
+
+
+meta_unique <- sample_metadata %>% 
+  select(acc, cl_line, part, title) %>% 
+  bind_rows(rnaseq_sample_metadata %>% 
+              select(acc, cl_line, part, title)) %>%
+  bind_rows(m_sample_metadata %>% 
+              select(acc, cl_line, part, title)) %>% 
+  bind_rows(m_rnaseq_sample_metadata %>% 
+              select(acc, cl_line, part, title)) %>%
   unique() # 560297
 
-mu_s <- meta_unique %>% left_join(cl_lab_unique, by=c("acc"="gsm")) %>%
-  group_by(acc)  %>% mutate(str=paste(c(cl_line, part, title), collapse=" ")) %>%
+mu_s <- meta_unique %>% 
+  left_join(cl_lab_unique, by=c("acc"="gsm")) %>%
+  group_by(acc) %>%
+  mutate(str=paste(c(cl_line, part, title), collapse=" ")) %>%
   ungroup() %>%
   mutate(str=tolower(str))
 mu_s2 <- mu_s %>% mutate(source_type=case_when(
@@ -67,27 +83,27 @@ mu_s2 <- mu_s %>% mutate(source_type=case_when(
 table(mu_s2$source_type)
 
 # Table (1): sample source type
+stopifnot(nrow(comb_metadata)==nrow(mu_s2))
 mu_s2 %>% write_csv("data/sample_source_type.csv")
-stopifnot(nrow(human_metadata)==nrow(mu_s2))
 
 mu_s3 <- mu_s2 %>% 
   select(acc, source_type, cl_line, accession) %>%
   rename(sample_acc=acc, cl_acc=accession, cl_name=cl_line) %>%
-  left_join(human_metadata, by=c("sample_acc")) %>%
+  left_join(comb_metadata, by=c("sample_acc")) %>%
   select(sample_acc, organism, data_type, everything()) 
 
 ### -- cell line vs tissue sex breakdown -- ##
-sample_type <- read_csv("data/sample_source_type.csv")
-human_s <- comb_metadata %>% filter(organism=="human")
-sex_lab_w_source <-sample_type %>% 
+mu_s2 <- read_csv("data/sample_source_type.csv")
+
+sex_lab_w_source <-mu_s2 %>% 
   select(acc, source_type) %>% 
   rename(sample_acc=acc) %>%
-  left_join(human_s) %>%
-  select(-organism,-platform)
+  left_join(comb_metadata) %>%
+  select(-platform)
 
 
 frac_dat <- sex_lab_w_source %>% 
-  select(source_type, data_type, expr_sex) %>%
+  select(source_type, data_type, organism, expr_sex) %>%
   filter(!is.na(expr_sex)) %>%
   mutate(source_type2=case_when(
     source_type=="tissue" ~ "tissue",
@@ -95,11 +111,15 @@ frac_dat <- sex_lab_w_source %>%
     source_type=="primary_cells" ~ "primary cells",
     TRUE ~ "other"
   )) %>%
-  group_by(data_type) %>% 
+  bind_rows(sex_lab_w_source %>% 
+              select(source_type, data_type, organism, expr_sex) %>%
+              filter(!is.na(expr_sex)) %>%
+              mutate(source_type2="aggregate")) %>%
+  group_by(data_type, source_type2, organism) %>% 
   mutate(total_f=sum(expr_sex=="female"),
          total_m=sum(expr_sex=="male")) %>%
   ungroup() %>%
-  group_by(source_type2, data_type) %>%
+  group_by(source_type2, organism, data_type) %>%
   mutate(num_f=sum(expr_sex=="female"),
          num_m=sum(expr_sex=="male")) %>%
   mutate(frac_f=num_f/(total_f+total_m),
@@ -108,43 +128,59 @@ frac_dat <- sex_lab_w_source %>%
   unique() %>% 
   ungroup()
 
-counts_w_aggreg <- frac_dat %>% 
-  select(-frac_f, -frac_m) %>%
-  pivot_longer(cols=c("total_f", "num_f")) %>%
-  mutate(dat_type=ifelse(name=="total_f", "aggregate", "separate")) %>%
-  rename("num_f"=value) %>%
-  select(-name) %>%
-  pivot_longer(cols=c("total_m", "num_m")) %>%
-  mutate(dat_type2=ifelse(name=="total_m", "aggregate", "separate")) %>%
-  rename("num_m"=value) %>%
-  select(-name) %>%
-  filter(dat_type==dat_type2) %>%
-  select(-dat_type2) %>%
-  pivot_longer(cols=c("num_f", "num_m"), names_to="expr_sex", values_to="count") %>%
-  mutate(comb_col=paste(source_type2, dat_type, sep=","))
+frac_dat2 <- frac_dat %>% 
+  select(data_type, organism,  source_type2, total_f, total_m, frac_f, frac_m) %>%
+  pivot_longer(cols=c("frac_f", "frac_m"), 
+               names_to="sex", 
+               values_to="fraction") %>%
+  pivot_longer(cols=c("total_f", "total_m"), 
+               names_to="sex2", 
+               values_to="total") %>%
+  mutate(sex=str_replace(sex, "frac_", ""),
+         sex2=str_replace(sex2, "total_", "")) %>%
+  filter(sex==sex2) %>%
+  select(-sex2) %>%
+  pivot_longer(cols=c("total", "fraction"), 
+               names_to="stat",
+               values_to="value")
 
-counts_w_aggreg2 <- counts_w_aggreg %>%
-  filter(str_detect(comb_col, "separate") |comb_col=="tissue,aggregate") %>%
-  mutate(comb_col=str_replace_all(comb_col, ",separate", "")) %>%
-  mutate(comb_col=ifelse(comb_col=="tissue,aggregate", "aggregate", comb_col)) %>%
-  select(-source_type2, -dat_type) %>%
-  mutate(source_type=factor(comb_col, levels=c("aggregate", "cell line", "tissue", "primary cells", "other"))) 
+require('scales')
+ggplot(frac_dat2 %>% 
+         mutate(organism=sprintf("%s - %s", organism, data_type)) %>%
+         mutate(source_type2=factor(source_type2, 
+                                    levels=c("aggregate", "cell line",
+                                             "tissue", "other"))) %>%
+         mutate(sex=ifelse(sex=="m", "male", "female")), 
+       aes(x=source_type2, y=value, fill=sex))+
+  geom_bar(stat="identity")+facet_grid(stat~organism, scales="free")+theme_bw()+
+  theme( panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(),
+         legend.title = element_blank()) +
+  scale_fill_manual(values=c(my.cols4[1], my.cols4[3]))+
+  scale_y_continuous(labels = comma)+
+  xlab("")+
+  ylab("")
+ggsave("figures/paper_figs/sex_breakdown_sample_type.png")
+
+# breakdown calculations for stats
+frac_dat2 %>% 
+  filter(sex=="f" & source_type2 %in% c("tissue", "aggregate") & stat=="fraction") %>%
+  arrange(organism, data_type, source_type2)
+
+frac_dat2 %>% 
+  filter(source_type2 %in% c("cell line", "aggregate"), stat=="total") %>%
+  arrange(organism, data_type, source_type2) %>% 
+  group_by(organism, data_type, source_type2) %>% 
+  summarize(sum=sum(value))
 
 
-# # Figure (0) - breakdown
-# ggplot(sex_lab_w_source %>% 
-#          filter(source_type %in% 
-#                   c("tissue", "named_cl") &
-#                   !is.na(expr_sex)),
-#        aes(x=source_type))+
-#   geom_bar(aes(fill=expr_sex))+
-#   facet_grid(data_type~.)
-# 
-# # distributions
-# ggplot(sex_lab_w_source %>%
-#          filter(source_type %in% c("tissue", "named_cl", "unnamed_cl", "primary_cells")), 
-#        aes(x=p_male, group=source_type, col=source_type))+
-#   geom_density()
+
+# distributions are different
+ggplot(sex_lab_w_source %>%
+         filter(!is.na(expr_sex)),
+        aes(x=p_male, group=source_type, col=source_type))+
+   geom_density()+
+  facet_wrap(.~organism) # // TODO: mouse "other" looks weird
 
 
 # --- CELL LINE SEX LABELS --- #
@@ -228,7 +264,7 @@ samples_cl_sl %>% write_csv("data/cl_sex_mapped.csv")
 cl_expr <- samples_cl_sl %>% 
   filter(cl_annot_sex %in% c("female", "male") & !is.na(expr_sex)) %>%
   mutate(tot=n()) %>%
-  group_by(cl_annot_sex, expr_sex) %>%
+  group_by(organism,cl_annot_sex, expr_sex) %>%
   mutate(n=n()) %>%
   select(cl_annot_sex, expr_sex, n, tot) %>%
   unique() %>%
@@ -261,14 +297,14 @@ my_dat3 <- samples_cl_sl %>%
       TRUE ~ "multi-map"
     )) %>%
   filter(!is.na(expr_sex) & !is.na(allele_sex) & !is.na(annot_sex)) %>%
-  select(-cl_acc,-metadata_sex, -cl_name, -organism, 
+  select(-cl_acc,-metadata_sex, -cl_name, -organism, -platform,
          -source_type, -study_acc, -p_male, -data_type) 
   
 
 
 cl_flow_freq_counts <- my_dat3 %>%
   ungroup() %>%
-  filter(!is.na(expr_sex) & expr_sex!="" ) %>%
+  filter(!is.na(expr_sex) & expr_sex!="") %>%
   mutate(allele_sex=ifelse(is.na(allele_sex) | allele_sex=="", "unknown", allele_sex),
          annot_sex=ifelse(is.na(annot_sex) | annot_sex=="", "unknown", annot_sex )) %>%
   rename(donor=annot_sex, expression=expr_sex, recorded=allele_sex) %>%

@@ -158,7 +158,7 @@ m_exp_sample <- read_csv("data/01_metadata/mouse_rnaseq_exp_to_sample.csv")
 # convert runs to SRA samples
 h_runs_to_sample <- sraConvert(h_exp_sample$sample_acc, 'sample', sra_con) 
 m_runs_to_sample <- sraConvert(m_exp_sample$sample_acc, 'sample', sra_con) 
-save(h_runs_to_sample, m_runs_to_sample, file="run_sample_sra.RData")
+save(h_runs_to_sample, m_runs_to_sample, file="data/dates/run_sample_sra.RData")
 
 # sample attributes -- abt half have something (tbd if dates tho!)
 sample_list <- unique(c(h_runs_to_sample$sample, m_runs_to_sample$sample))
