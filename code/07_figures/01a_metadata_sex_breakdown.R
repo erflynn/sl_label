@@ -1,4 +1,4 @@
-# 01_metadata_sex_breakdown.R
+# 01a_metadata_sex_breakdown.R
 # E Flynn
 # 7/20/2020
 # code for looking at the metadata sex breakdown 
@@ -113,7 +113,7 @@ comb_metadata <- do.call(rbind, list(human_microarray,
 
 
 stopifnot(length(unique(comb_metadata$sample_acc))==nrow(comb_metadata))
-#write_csv(comb_metadata, "data/01_metadata/combined_human_mouse_meta.csv")
+write_csv(comb_metadata, "data/01_metadata/combined_human_mouse_meta.csv")
 
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 # ----- 3. COUNT TABLES ----- #
