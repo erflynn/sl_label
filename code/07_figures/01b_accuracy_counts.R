@@ -8,7 +8,7 @@
 # - microarray - double check
 # - get HC data and compare!
 # - look at platform specificity
-# - cutoffs
+# - switch everything to v2 datasets if there's enough info
 
 require('tidyverse')
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
@@ -54,7 +54,8 @@ grabStats <- function(ds, ds_name, cutoff=0.5) {
   ref_counts <- ds3 %>% group_by(metadata_sex) %>% count() 
   num_f <- ref_counts %>% filter(metadata_sex=="female") %>% pull(n)
   num_m <- ref_counts %>% filter(metadata_sex=="male") %>% pull(n)
-
+  if (num_m==num_samples){ num_f=0 }
+  if (num_f==num_samples){ num_m=0 }
   acc=table(ds3$match)[["TRUE"]]/nrow(ds3)
   return(list("ds_assess"=ds_name, "cutoff"=cutoff, 
               "num_samples"=num_samples, "num_f"=num_f,
@@ -63,7 +64,7 @@ grabStats <- function(ds, ds_name, cutoff=0.5) {
               "accuracy"=acc))
 }
 
-createAccDf <- function(my_organism, my_data_type){
+createAccDf <- function(my_organism, my_data_type, cutoffs=NULL){
   load(sprintf("data/07_model_dat/%s_%s_sex_train_mat.RData", my_organism, my_data_type))
   # X_train, X_test, Y_train, Y_test
   
@@ -113,46 +114,97 @@ createAccDf <- function(my_organism, my_data_type){
   ss_v2 <- addSamples(ss %>% filter(!train_study), comb_metadata_filt)
 
   # // TODO add HC data 
-  
-  # calculate accuracies and put data frame together
-  acc_df <- do.call(rbind, list(grabStats(train2, "train"),
-                                grabStats(test2, "test"), 
-                                grabStats(extended_test, "extended_test"),
-                                grabStats(extended_test2, "extended_test_v2"),
-                                grabStats(ss2, "single_sex"),
-                                grabStats(ms2, "mixed_sex"),
-                                grabStats(ss_sm2, "single_sex_sm"),
-                                grabStats(ms_sm2, "mixed_sex_sm"),
-                                grabStats(ss_v2, "single_sex_v2"),
-                                grabStats(ms_v2, "mixed_sex_v2")))
+
+  if (!is.null(cutoffs)){
+    c_acc_dfs <- lapply(cutoffs, function(cutoff){
+      c_acc_df <- do.call(rbind, list(grabStats(train2, "train", cutoff),
+                                    grabStats(test2, "test", cutoff),
+                                    grabStats(extended_test, "extended_test", cutoff),
+                                    grabStats(extended_test2, "extended_test_v2", cutoff),
+                                    grabStats(ss2, "single_sex", cutoff),
+                                    grabStats(ms2, "mixed_sex", cutoff),
+                                    grabStats(ss_v2, "single_sex_v2", cutoff),
+                                    grabStats(ms_v2, "mixed_sex_v2", cutoff)))
+      return(c_acc_df)
+    })
+    acc_df <- do.call(rbind, c_acc_dfs)
+  }
+
+  else {
+    # calculate accuracies and put data frame together
+    acc_df <- do.call(rbind, list(grabStats(train2, "train"),
+                                  grabStats(test2, "test"), 
+                                  grabStats(extended_test, "extended_test"),
+                                  grabStats(extended_test2, "extended_test_v2"),
+                                  grabStats(ss2, "single_sex"),
+                                  grabStats(ms2, "mixed_sex"),
+                                  grabStats(ss_sm2, "single_sex_sm"),
+                                  grabStats(ms_sm2, "mixed_sex_sm"),
+                                  grabStats(ss_v2, "single_sex_v2"),
+                                  grabStats(ms_v2, "mixed_sex_v2")))
+  }
+
   acc_df2 <- data.frame(acc_df)
   acc_df2$organism <- my_organism
   acc_df2$data_type <- my_data_type
   return(acc_df2)
 }
 
-hr_acc_df <- createAccDf("human", "rnaseq")
-hm_acc_df <- createAccDf("human", "microarray")
-mr_acc_df <- createAccDf("mouse", "rnaseq")
-mm_acc_df <- createAccDf("mouse", "microarray")
+hr_acc_df <- createAccDf("human", "rnaseq", c(0.5, 0.6, 0.7, 0.8, 0.9))
+hm_acc_df <- createAccDf("human", "microarray", c(0.5, 0.6, 0.7, 0.8, 0.9))
+mr_acc_df <- createAccDf("mouse", "rnaseq", c(0.5, 0.6, 0.7, 0.8, 0.9))
+mm_acc_df <- createAccDf("mouse", "microarray", c(0.5, 0.6, 0.7, 0.8, 0.9))
 
+lapply(list(hr_acc_df, hm_acc_df, mr_acc_df, mm_acc_df), function(x) apply(x, 1, unlist))
 acc_dat <- data.frame(do.call(rbind, list(hr_acc_df, hm_acc_df, mr_acc_df, mm_acc_df)))
-acc_dat2 <- data.frame(apply(acc_dat , c(1,2), unlist))
-acc_dat2 %>% select(organism, data_type, everything()) %>% write_csv("tables/s2_accuracies.csv")
+acc_dat2 <- data.frame(apply(acc_dat, c(1,2), unlist))
+acc_dat2 %>% select(organism, data_type, everything()) %>% arrange(cutoff, organism, data_type, ds_assess) %>%write_csv("tables/s2_accuracies.csv")
 
 # NOTE: microarray has data leakage!! eeps :/
+acc_dat3 <- acc_dat2 %>% as_tibble() %>%
+  mutate(across(c(-ds_assess, -organism, -data_type), ~as.numeric(as.character(.)))) %>%
+  mutate(frac_labeled=num_samples/(num_samples+num_unlab_at_cutoff),
+         threshold_score=factor(cutoff))
+
+acc_dat3 %>%
+  ggplot(aes(x=frac_labeled, y=accuracy, col=threshold_score, group=threshold_score))+
+  xlab("fraction of data labeled")+
+
+  theme_bw() + 
+  geom_vline(xintercept = 0.7, col="gray")+
+  geom_vline(xintercept = 0.8, col="gray")+
+  geom_vline(xintercept = 0.9, col="gray")+
+  geom_hline(yintercept = 0.98, col="gray")+
+  geom_hline(yintercept = 0.95, col="gray")+
+  geom_hline(yintercept = 0.9, col="gray")+
+  geom_point(alpha=0.8)+ 
+  theme(panel.grid.major = element_blank())+
+  theme(panel.grid.minor = element_blank())+
+  facet_grid(data_type~organism)
+# make a pretty plot
+ggsave("figures/paper_figs/supp_accuracy_p_cutoff.png")
 
 # // TODO:
 #  varying the threshold of p_male --> what is the accuracy
 #  does this match the metric in that paper?
 delt_cutoff <- c(0.5, 0.6, 0.7, 0.8, 0.9)
 
-my_l <-do.call(rbind, list(grabStats(test2, "c0.5", 0.5),
-     grabStats(test2, "c0.6", 0.6),
-     grabStats(test2, "c0.7", 0.7),
-     grabStats(test2, "c0.8", 0.8),
-     grabStats(test2, "c0.9", 0.9)))
-my_l
+my_l <-do.call(rbind, list(grabStats(extended_test2, "c0.5", 0.5),
+     grabStats(extended_test2, "c0.6", 0.6),
+     grabStats(extended_test2, "c0.65", 0.65),
+     grabStats(extended_test2, "c0.7", 0.7),
+     grabStats(extended_test2, "c0.75", 0.75),
+     grabStats(extended_test2, "c0.8", 0.8),
+     grabStats(extended_test2, "c0.85", 0.85),
+     grabStats(extended_test2, "c0.9", 0.9)))
+df <- data.frame(apply(my_l , c(1,2), unlist)) %>% 
+  as_tibble() %>%
+  mutate(across(-ds_assess, ~as.numeric(as.character(.)))) %>%
+  mutate(frac_labeled=num_samples/(num_samples+num_unlab_at_cutoff))
+
+df %>%
+  ggplot(aes(x=frac_labeled, y=accuracy, col=factor(cutoff)))+
+  geom_point()
 
 # ---- HC data ---- #
 # only have it for microarray so far :/ 
