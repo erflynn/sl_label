@@ -5,10 +5,9 @@
 # Code for calculating the accuracy (agreement) of our method
 #
 # TODO:
-# - microarray - double check
+# - microarray - double check (appears 1-2 studies)
 # - get HC data and compare!
-# - look at platform specificity
-# - switch everything to v2 datasets if there's enough info
+# - switch everything to v2 datasets
 
 require('tidyverse')
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
@@ -16,8 +15,6 @@ by_study <- read_csv("data/study_sex_lab.csv")
 
 # create a table w accuracies
 #  organism | data_type | assess_ds | cutoff | num_samples | num_f | num_m | num_studies | accuracy
-
-
 
 getUniqueStudies <- function(ds){
   ds %>% 
@@ -64,6 +61,8 @@ grabStats <- function(ds, ds_name, cutoff=0.5) {
               "accuracy"=acc))
 }
 
+
+
 createAccDf <- function(my_organism, my_data_type, cutoffs=NULL){
   load(sprintf("data/07_model_dat/%s_%s_sex_train_mat.RData", my_organism, my_data_type))
   # X_train, X_test, Y_train, Y_test
@@ -80,7 +79,7 @@ createAccDf <- function(my_organism, my_data_type, cutoffs=NULL){
   # grab the studies 
   train_studies <- train2 %>% getUniqueStudies()
   test_studies <- test2 %>% getUniqueStudies()
-  print(length(intersect(train_studies, test_studies)) == 0)
+  print(length(intersect(train_studies, test_studies)))
   
   # filter to remove training samples (and studies)
   extended_test <- comb_metadata_filt %>%
@@ -92,14 +91,11 @@ createAccDf <- function(my_organism, my_data_type, cutoffs=NULL){
   
   extended_test2 <- extended_test %>% filter(!any_train) 
   
-  #
   # ---- set up for ms/ss ---- #
   by_study_sm <- by_study %>% 
     filter(label_type=="metadata" & !study_sex=="unknown" &
              organism==my_organism & data_type==my_data_type) %>%
     mutate(train_study=(study_acc %in% train_studies))
-  
-  
   
   # filter for a specific study size
   ms <- by_study_sm %>% filter(study_sex == "mixed sex" & num_tot >= 10)
@@ -184,27 +180,6 @@ acc_dat3 %>%
 # make a pretty plot
 ggsave("figures/paper_figs/supp_accuracy_p_cutoff.png")
 
-# // TODO:
-#  varying the threshold of p_male --> what is the accuracy
-#  does this match the metric in that paper?
-delt_cutoff <- c(0.5, 0.6, 0.7, 0.8, 0.9)
-
-my_l <-do.call(rbind, list(grabStats(extended_test2, "c0.5", 0.5),
-     grabStats(extended_test2, "c0.6", 0.6),
-     grabStats(extended_test2, "c0.65", 0.65),
-     grabStats(extended_test2, "c0.7", 0.7),
-     grabStats(extended_test2, "c0.75", 0.75),
-     grabStats(extended_test2, "c0.8", 0.8),
-     grabStats(extended_test2, "c0.85", 0.85),
-     grabStats(extended_test2, "c0.9", 0.9)))
-df <- data.frame(apply(my_l , c(1,2), unlist)) %>% 
-  as_tibble() %>%
-  mutate(across(-ds_assess, ~as.numeric(as.character(.)))) %>%
-  mutate(frac_labeled=num_samples/(num_samples+num_unlab_at_cutoff))
-
-df %>%
-  ggplot(aes(x=frac_labeled, y=accuracy, col=factor(cutoff)))+
-  geom_point()
 
 # ---- HC data ---- #
 # only have it for microarray so far :/ 
@@ -216,37 +191,128 @@ df %>%
 
 
 
-# --- DEPRECATED --- #
-# grab all the data we used for models! what was it and why?
-# filter it out
+platAcc <- function(my_organism, my_data_type){
+  load(sprintf("data/07_model_dat/%s_%s_sex_train_mat.RData", my_organism, my_data_type))
+  # X_train, X_test, Y_train, Y_test
+  
+  train <- data.frame(cbind("sample_acc"=rownames(X_train), Y_train)) %>% as_tibble()
+  test <- data.frame(cbind("sample_acc"=rownames(X_test), Y_test)) %>% as_tibble()
+  
+  comb_metadata_filt <- comb_metadata %>% 
+    filter(organism==my_organism & data_type==my_data_type)
+  
+  train2 <- train %>% inner_join(comb_metadata_filt)
+  test2 <- test %>% inner_join(comb_metadata_filt) 
+  
+  # grab the studies 
+  train_studies <- train2 %>% getUniqueStudies()
+  test_studies <- test2 %>% getUniqueStudies()
+  print(length(intersect(train_studies, test_studies)))
+  
+  # filter to remove training samples (and studies)
+  extended_test <- comb_metadata_filt %>%
+    select(sample_acc, study_acc, platform, metadata_sex, expr_sex, p_male) %>%
+    anti_join(train) %>% # remove training samples
+    group_by(sample_acc) %>%
+    mutate(any_train=(length(intersect(str_split(study_acc, ";")[[1]], train_studies)) !=0)) %>%
+    ungroup() 
+  
+  extended_test2 <- extended_test %>% filter(!any_train) 
+  df1 <- test2 %>% filter(!is.na(metadata_sex), !is.na(expr_sex), 
+                   metadata_sex %in% c("male", "female"), 
+                   expr_sex %in% c("male", "female")) %>%
+    mutate(match=(metadata_sex==expr_sex)) %>%
+    group_by(platform) %>%
+    summarize(n=n(), accuracy=sum(match)/n())
+  df1$ds_assess <- "test"
+  
+  df2 <- extended_test2 %>% filter(!is.na(metadata_sex), !is.na(expr_sex), 
+                            metadata_sex %in% c("male", "female"), 
+                            expr_sex %in% c("male", "female")) %>%
+    mutate(match=(metadata_sex==expr_sex)) %>%
+    group_by(platform) %>%
+    summarize(n=n(), accuracy=sum(match)/n())
+  df2$ds_assess <- "extended_test"
+  df <- df1 %>% bind_rows(df2)
+  df$organism <- my_organism
+  df$data_type <- my_data_type
+  return(df)
+}
 
-# loadDat <- function(f,d) {
-#   bind_rows(read_csv(sprintf("data/03_train/%s_%s_sex_pos_sample.csv", f, d)),
-#             read_csv(sprintf("data/03_train/%s_%s_sex_neg_sample.csv", f, d))) 
-# }
-# 
-# f.data <- lapply(c("human", "mouse"),
-#        function(f){
-#         bind_rows(
-#           loadDat(f, "microarray") %>% rename(sample_acc=acc) %>% select(sample_acc),
-#           loadDat(f, "rnaseq") %>% select(sample_acc)
-#         )
-#        }
-# )
-# train_data <- do.call(rbind, f.data)
-# 
-# # add in study, organism, data_type?
-# train_data2 <- train_data %>% 
-#   left_join(comb_metadata %>% select(sample_acc, study_acc, organism, data_type))
-# 
-# # be aware of multiple study data
-# multi_study <- train_data2 %>% 
-#   filter(str_detect(study_acc, ";")) %>%
-#   distinct(study_acc) 
-# 
-# # ALL STUDIES - problem: I think we used too many studies!!!
-# all_studies <- train_data2 %>% 
-#   distinct(organism, data_type, study_acc) %>% 
-#   separate_rows(study_acc, sep=";") %>%
-#   unique()
+(hm_plat <- platAcc("human", "microarray"))
+(hs_plat <- platAcc("human", "rnaseq"))
+(mm_plat <- platAcc("mouse", "microarray"))
+(ms_plat <- platAcc("mouse", "rnaseq"))
 
+plat_dat <- do.call(rbind, list(hm_plat, hs_plat, mm_plat, ms_plat)) %>%
+  arrange(organism, data_type, desc(accuracy)) 
+
+
+require('RColorBrewer')
+blues <- brewer.pal(5,name="Blues")
+
+plotPlatAcc <- function(ds, plot_title){
+  ds %>%
+    filter(ds_assess=="extended_test") %>%
+    arrange(desc(accuracy)) %>%
+    mutate(platform=str_extract(platform, "(?<=\\().+(?=\\))")) %>% # grab text in parens
+    group_by(platform) %>%
+    mutate(n2=1:n()) %>% # add a suffix if there are multiple w same name
+    ungroup() %>%
+    mutate(platform=ifelse(n2>1, paste(platform, n2, sep="-"), platform)) %>%
+    mutate(platform=factor(platform, levels=unique(platform))) %>%
+    mutate(num_samples=case_when(
+      n < 10 ~ "<10",
+      n < 50 ~ "10 - 49",
+      n < 100 ~ "50 - 99",
+      n < 500 ~ "100 - 499",
+      TRUE ~ ">500",
+    )) %>% 
+    mutate(num_samples=factor(num_samples, levels=c("<10", "10 - 49", "50 - 99", "100 - 499", ">500"))) %>%
+    ggplot(aes(x=platform, y=accuracy, fill=num_samples))+
+    geom_bar(stat="identity")+
+    theme_bw()+
+    ggtitle(plot_title)+
+    scale_fill_manual(values=blues)+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank())+
+    xlab("")
+  
+}
+
+plotPlatAcc(hs_plat, "Human - RNA-seq")
+ggsave("figures/paper_figs/supp_plat_acc_hr.png")
+
+plotPlatAcc(hm_plat, "Human - Microarray")
+ggsave("figures/paper_figs/supp_plat_acc_hm.png")
+
+plotPlatAcc(ms_plat, "Mouse - RNA-seq")
+ggsave("figures/paper_figs/supp_plat_acc_mr.png")
+
+plotPlatAcc(mm_plat, "Mouse - Microarray")
+ggsave("figures/paper_figs/supp_plat_acc_mm.png")
+
+# write out the platform-level accuracy for a supplement
+plat_dat <- do.call(rbind, list(hm_plat, hs_plat, mm_plat, ms_plat)) %>%
+  arrange(organism, data_type, desc(accuracy)) %>%
+  filter(ds_assess=="extended_test") %>%
+  select(-ds_assess)
+
+plat_dat %>% write_csv("tables/supp_plat_accuracy.csv")
+
+# some have pooor performance
+plat_dat %>% 
+  filter(accuracy < 0.7)
+
+# some have small n
+plat_dat %>%
+  filter(n <= 10)
+
+ggplot(plat_dat, aes(x=n, y=accuracy))+
+  xlim(0,500)+
+  geom_point()+
+  xlab("number of samples")+
+  theme_bw()
+
+ggsave("figures/paper_figs/extra_plat_acc_by_size.png")
