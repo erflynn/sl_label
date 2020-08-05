@@ -1,0 +1,53 @@
+# Utilities for n-gram mapping
+
+
+PUNCT.STR <- "[-|,|\\.|/|#|_|(|)|+|;|:|\t|}|{|\\[|\\]|']"
+labelNgram <- function(text_df, ref_df, remove_short=TRUE){
+  ref_df2 <- ref_df %>%
+    mutate(clean_name=str_trim(str_squish(str_replace_all(name, PUNCT.STR , " ")))) %>%
+    unique()
+  text_df2 <- text_df %>% 
+    mutate(clean_str=str_trim(str_squish(str_replace_all(str, PUNCT.STR , " ")))) %>%
+    select(src_col, clean_str, str) %>%
+    unique()
+  
+  # separate out the data into unigrams
+  sample_unigrams <- text_df2 %>% 
+    unnest_tokens(word, clean_str, token=stringr::str_split, pattern = " ") 
+  
+  if (remove_short){
+    sample_unigrams <- sample_unigrams %>% 
+      filter(str_length(word) > 3 & is.na(as.numeric(word))) # remove short words or numbers 
+  } 
+  
+  bigrams <- text_df2 %>% 
+    unnest_tokens(bigram, clean_str, token = "ngrams",  n = 2)
+  
+  if (!remove_short){  # remove no+numeric (this is numbering)
+    bigrams <- bigrams %>% filter(!str_detect(bigram, "^no [0-9]+"))  
+  }
+  
+  trigrams <- text_df2  %>%
+    unnest_tokens(trigram, clean_str, token = "ngrams", n = 3)
+  
+  # map with a join
+  comb_names_uni <- ref_df2 %>% 
+    filter(nwords==1) %>%
+    inner_join(sample_unigrams, by=c("clean_name"="word")) %>% 
+    distinct()
+  
+  comb_names_bi <- ref_df2 %>% 
+    filter(nwords==2) %>%
+    inner_join( bigrams, by=c("clean_name"="bigram")) %>% 
+    distinct()
+  
+  comb_names_tri <- ref_df2 %>% 
+    filter(nwords==3) %>%
+    inner_join(trigrams, by=c("clean_name"="trigram")) %>% 
+    distinct()
+  
+  comb_names <-  bind_rows(comb_names_uni, comb_names_bi, comb_names_tri)
+  
+  return(comb_names)
+}
+

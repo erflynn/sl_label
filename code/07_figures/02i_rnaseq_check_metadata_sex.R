@@ -74,7 +74,7 @@ comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 
 rnaseq_w_sample <- comb_metadata %>% 
   filter(data_type=="rnaseq") %>%
-  left_join(runs_to_sample_sl, by="sample_acc") %>%
+  left_join(runs_to_sample_sl, by="sample_acc") 
 
 table(is.na(rnaseq_w_sample$sra_sample_sex)) # 5110 missing
 stopifnot(length(unique(rnaseq_w_sample$sample_acc))==nrow(rnaseq_w_sample))

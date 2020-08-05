@@ -235,75 +235,8 @@ mapped_studies <- do.call(rbind, list(mapped_study1, mapped_study2, mapped_study
 mapped_studies2 <- mapped_studies %>% 
   group_by(orig_str) %>% 
   summarise(accession=paste(accession, collapse=";")) # 79
-study_to_cl <- study_text_df %>% select(gse, orig_str) %>% inner_join(mapped_studies2, by="orig_str")
+study_to_cl <- study_text_df %>% 
+  select(gse, orig_str) %>% 
+  inner_join(mapped_studies2, by="orig_str")
 study_to_cl %>% write_csv(sprintf("data/02_labeled_data/%s_%s_study_cl.csv", prefix, data_type))
-
-
-# what is the overlap??
-# text_mapped <- read_csv(sprintf("data/02_labeled_data/%s_%s_sample_cl.csv", prefix, data_type))
-# exp_to_samp <- read_csv("data/01_metadata/human_exp_to_sample.csv")
-# study_to_samp <- study_to_cl %>% 
-#   left_join(exp_to_samp, by=c("gse"="study_acc"))
-# samp_to_study <- text_mapped %>% left_join(exp_to_samp, by=c("gsm"="sample_acc"))
-# my_studies <- unique(samp_to_study$study_acc)
-# lab_studies <- unique(study_to_samp$gse)
-# length(setdiff(lab_studies, my_studies) ) # 43
-# length(intersect(lab_studies, my_studies) ) # 36
-# 
-# length(setdiff(text_mapped$gsm, study_to_samp$sample_acc)) # 52575
-# length(intersect(text_mapped$gsm, study_to_samp$sample_acc)) # 280... pitiful
-# length(setdiff(study_to_samp$sample_acc, text_mapped$gsm)) # 1243
-# 
-# no_samp <- study_to_samp %>% select(gse, orig_str) %>% 
-#   anti_join(samp_to_study %>% select(study_acc) %>% unique(), by=c("gse"="study_acc")) %>%
-#   select(gse, orig_str) %>% unique()
-# 
-# no_map <- exp_to_samp %>% filter(study_acc %in% no_samp$gse) %>% 
-#   left_join(sample_metadata %>% select(acc, cl_line, part, title), by=c("sample_acc"="acc")) 
-# almost all are missing
-
-
-# --- TODO: future work, this is sometimes in the title ack!
-
-##### STOP #####
-
-#cell_name <- no_map2 %>% filter(str_detect(str, "cell"))
-#cell_line <- cell_name %>% filter(str_detect(str, "line"))
-#p_i_s <- no_map2 %>% filter(str_detect(orig_str, "primary|stem|culture|ipsc")) # 68
-
-
-
-
-# #### EDIT DISTANCE
-# my.str <- "mda-mb-231-s"
-# cl.list <- cell_df$cl 
-# 
-# 
-# my_fuzzy_match <- function(my.str, cl.list){
-#   close.matches <- agrep(my.str, cl.list, max.distance=c("insertions"=0.1, "deletions"=0.1, "substitutions"=0), value=TRUE)
-#   if (length(close.matches) > 1){
-#     dists <- stringdist::stringdist(my.str, close.matches, method="jw")
-#     mapping <- close.matches[which(dists==min(dists))] # UGH gives first minimum
-#     return(mapping)
-#   } else {
-#     return(NA)
-#   }
-# }
-# res <- sapply(no_map3$str, function(my.str) my_fuzzy_match(my.str, cl.list))
-# length(res[!is.na(res)])
-# skip the fuzzy mapping
-
-
-# other todos:
-#  1. look at "part" & "title"
-#  2. is there a cell line within the sentence? grab it if there is
-
-
-# --- look at 100 that map and 100 that don't --- #
-# no_map <- sample_metadata %>% 
-#   anti_join(comb_names , by=c("acc"="gsm")) %>% 
-#   filter(!is.na(cl_line)) %>%
-#   group_by(cl_line) %>% 
-#   count() %>%
-#   arrange(desc(n))
 

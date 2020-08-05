@@ -36,12 +36,8 @@ drugbank_dat <- read_tsv("../labeling/geo2drug/data/02_labeled_data/drugbank_map
 #   - 02_drug_gse_labeling.R (from geo2drug repo) - doesnt have RNA-seq 
 #   - 02_map_to_drugbank.R (current repo) - sample level
 
-
-
 study_db <- by_study %>% 
   left_join(drugbank_dat %>% select(gse, dbID,name, ATC), by=c("study_acc"="gse")) 
-
-
 
 # --- plot sex breakdown of drug studies --- #
 ggplot(study_db %>% 
