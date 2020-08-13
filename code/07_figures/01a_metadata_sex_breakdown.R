@@ -396,12 +396,13 @@ counts_sample_table <- counts_sample %>%
   pivot_wider(names_from=sex_lab, values_from=n, 
               values_fill = list(n=0)) %>%
   mutate(num_samples=(female+male+mixed+unlabeled)) %>%
-  mutate(frac_missing=unlabeled/num_samples,
+  mutate(frac_unlabeled=unlabeled/num_samples,
          frac_female=female/num_samples,
          frac_male=male/num_samples) 
 
 
 counts_sample_table %>%
+  mutate(across(c(frac_unlabeled:frac_male), signif, 3)) %>%
   write_csv("tables/s1a_sample_sex_counts.csv")
 
 counts_study <- by_study2  %>%
@@ -416,16 +417,16 @@ counts_study_table <- counts_study %>%
   pivot_wider(names_from=study_sex, values_from=n, values_fill = list(n=0)) %>%
   
   # // TODO: where does mostly go here?? should fraction be of labeled studies?
-  mutate(frac_missing=unknown/num_studies,
+  mutate(frac_unlabeled=unknown/num_studies,
          frac_male_only=`male only`/num_studies,
          frac_female_only=`female only`/num_studies,
          frac_mixed_sex=`mixed sex`/num_studies,
-         frac_single_sex=(`male only`+`female only`)/num_studies) %>%
-  select(-num_studies, -frac_missing, everything(), num_studies, frac_missing) 
-
+         frac_single_sex=(`male only`+`female only`)/num_studies)
+ 
 # // TODO: format sig figs
 
-counts_study_table %>%  
+counts_study_table %>% 
+  mutate(across(contains("frac"), signif, 3)) %>%
   write_csv("tables/s1b_study_sex_counts.csv")
 
 

@@ -111,31 +111,42 @@ plat_counts2 <- plat_counts %>%
             by=c("organism", "data_type","platform")) 
 plat_counts2 %>% filter(test_accuracy < 0.7)
 
+plat_count_summary <- plat_counts2 %>%
+  mutate(category=case_when(
+    is.na(test_accuracy) ~ "not_in_test",
+    (test_accuracy < 0.7) ~ "poor_accuracy",
+    TRUE ~ "included"),
+    approx_frac=ifelse(is.na(test_accuracy), 0, 
+                       frac_samples*frac_test_labeled),
+    approx_acc=frac_samples*test_accuracy) %>%
+  select(-num_samples, -num_in_test) %>%
+  group_by(organism, data_type, category) %>%
+  summarize(frac_samples=sum(frac_samples),
+            approx_frac=sum(approx_frac), 
+            approx_acc=sum(approx_acc, na.rm=TRUE)) %>%
+  pivot_longer(c(frac_samples, approx_frac, approx_acc), 
+               names_to="stat", values_to="value") %>%
+  filter((stat=="approx_frac" & category=="included")|
+           (stat=="approx_acc" & category=="included") |
+           !stat %in% c("approx_frac", "approx_acc")) %>%
+  mutate(category=case_when(
+    stat=="approx_frac" ~ "approx_frac",
+    stat=="approx_acc" ~ "approx_acc",
+    TRUE ~ category
+  )) %>% 
+  select(-stat) %>%
+  unique() %>%
+  pivot_wider(names_from=category, values_from=value, values_fill=0) 
 
-not_test <- plat_counts2 %>% filter(is.na(test_accuracy)) %>%
-  group_by(organism, data_type) %>%
-  summarize(frac_not_tested=sum(frac_samples))
 
-frac_samples <- plat_counts2 %>% filter(!is.na(test_accuracy) & test_accuracy > 0.7) %>%
-  group_by(organism, data_type) %>%
-  summarize(frac_samples_included=sum(frac_samples))
-
-lab <- plat_counts2 %>% 
-  filter(!is.na(frac_test_labeled) & test_accuracy > 0.7) %>%
-  mutate(approx_frac=frac_samples*frac_test_labeled) %>%
-  group_by(organism, data_type) %>%
-  summarize(approx_frac_labeled=sum(approx_frac))
-
-plat_res <- plat_counts2 %>% filter(test_accuracy < 0.7) %>%
-  group_by(organism, data_type) %>%
-  summarize(frac_poor_acc=sum(frac_samples)) %>%
-  full_join(not_test) %>%
-  full_join(frac_samples) %>%
-  full_join(lab) %>%
+plat_count_summary %>% 
   ungroup() %>%
-  mutate(across(where(is.numeric), signif, 4)) 
-  
-plat_res%>% write_csv("tables/summary_platform.csv")
+  select(organism, data_type, poor_accuracy, not_in_test, 
+         included, approx_acc, approx_frac) %>%
+  rename(approx_accuracy=approx_acc,
+         approx_frac_labeled=approx_frac) %>%
+  mutate(across(where(is.numeric), signif, 4))  %>% 
+  write_csv("tables/summary_platform.csv")
 
 plat_dat %>%
   filter(frac_lab < 0.5)
