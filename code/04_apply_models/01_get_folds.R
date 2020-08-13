@@ -15,7 +15,7 @@ ds <- args[3]
 #   return(df)
 # }))
 
-full_df <- do.call(rbind, lapply(1:4, function(idx){
+full_df <- do.call(rbind, lapply(1:6, function(idx){
   load(sprintf("data/06_fold_dat/fold_%s_%s_%s_%s.RData", prefix, data_type, ds, idx))
   df <- do.call(rbind, lapply(res, function(x) x$tv))
   df$fold <- idx
@@ -92,7 +92,7 @@ summarized <- full_long %>% filter(!adaptive &grp=="valid") %>%
   filter(value_mu==max(value_mu))
 
 best_pars <- summarized %>% 
-  filter(metric=="class") %>% 
+  filter(metric=="class" & alpha!=0) %>% 
   ungroup() %>% 
   filter(value_mu==min(value_mu))
 
@@ -120,7 +120,7 @@ cv_accuracy <- sum(ydf2$y==ydf2$ypred)/nrow(all_ydf)
 # rat 0.814 m --> 0.737
 # human rnaseq 0.876
 # mouse rnaseq 0.935
-
+# human microarray cl --> 0.813
 # ---- use the fold output to train a new model ---- #
 
 #save(X_train, X_test, Y_train, Y_test, 
@@ -146,6 +146,8 @@ sum(preds_class_train==Y_train)/length(Y_train)
 # 0.878 (human RNA-seq)
 # 0.935 (mouse RNA-seq)
 # 0.777 rat microarray balanced
+# 0.838
+
 preds_test <- predict(fit, newx=X_test,  s=best.lambda, type="response")
 preds_class_test <- sapply(predict(fit, newx=X_test, s=best.lambda, type="class"), as.numeric)
 sum(preds_class_test==Y_test)/length(Y_test) 
@@ -155,6 +157,7 @@ sum(preds_class_test==Y_test)/length(Y_test)
 # 0.882 (human RNA-seq)
 # 0.913 (mouse RNA-seq)
 # 0.735 rat microarray balanced
+# 0.813
 
 my.lambda <- best.lambda
 # human -r: 0.07086

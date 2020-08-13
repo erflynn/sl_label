@@ -172,7 +172,8 @@ sample_study <- comb_metadata %>%
   select(sample_acc, study_acc) %>% 
   separate_rows(study_acc,  sep=";")
 
-sample_data2 <- sample_data %>% left_join(sample_study, by="sample_acc")
+sample_data2 <- sample_data %>% 
+  left_join(sample_study, by="sample_acc")
 sample_studies <- unique(sample_data2$study_acc) # 1095
 study_mentions <- unique(study_data$study_acc) # 7665
 length(intersect(sample_studies, study_mentions)) # 757
@@ -181,7 +182,8 @@ length(setdiff(study_mentions, sample_studies)) # 6908
 
 # --- are they the same drug? --- #
 samp_study_overlap <- sample_data2 %>% 
-  inner_join(study_data %>% select(-ATC) , by=c("organism", "data_type", "study_acc"))
+  inner_join(study_data %>% 
+               select(-ATC) , by=c("organism", "data_type", "study_acc"))
 
 table(samp_study_overlap$dbID.x==samp_study_overlap$dbID.y) # 5644 false, 9927 true
 
@@ -189,14 +191,17 @@ samp_study_compare <- samp_study_overlap %>%
   group_by(organism, data_type, study_acc) %>%
   mutate(dbIDx=paste(unique(dbID.x), collapse=";"),
          dbIDy=paste(unique(dbID.y),collapse=";"),
+         dbID=paste(intersect(dbID.x, dbID.y), collapse=";"),
          dbID_overlap=length(intersect(dbID.x, dbID.y)),
          dbID_union=length(union(dbID.x, dbID.y))) %>%
-  select(organism, data_type, study_acc, dbIDx, dbIDy, dbID_overlap, dbID_union) %>%
+  select(organism, data_type, study_acc, dbIDx, dbIDy, dbID, dbID_overlap, dbID_union) %>%
   unique()
 
-samp_study_compare %>% filter(dbID_overlap==dbID_union) # 557 studies have the same drugbank annotations
+samp_study_compare %>% 
+  filter(dbID_overlap==dbID_union) # 557 studies have the same drugbank annotations
 
 samp_study_compare %>% filter(dbID_overlap==0) %>% nrow() # 42 have no overlap in the drug annotations
+
 sample_data2 %>%
   semi_join(samp_study_compare %>% filter(dbID_overlap==0)) %>%
   select(-sample_acc) %>% 
@@ -208,7 +213,58 @@ samp_study_compare %>%
   filter(dbID_overlap!=dbID_union & dbID_overlap > 0) %>%
   arrange(desc(dbID_union), dbID_overlap) # 159 overlap by at least one drug but not all
 
+# ----- what studies have trt and ctl ? ----- #
 
+study_trt_ctl <- mapped_lab %>% 
+  left_join(sample_study, by="sample_acc") %>%
+  group_by(organism, data_type, study_acc) %>%
+  summarize(drug=sum(sample_type=="drug"),
+            ctl=sum(sample_type=="ctl"),
+            both=sum(sample_type=="both")) %>%
+  ungroup() %>%
+  mutate(study_type=case_when(
+    both==0 & ctl==0 & drug==0 ~ "no_data",
+    both==0 & drug == 0 & ctl != 0 ~ "ctl_only",
+    both==0 & ctl==0 & drug!=0 ~ "drug_only",
+    both!= 0 | (drug!=0 & ctl != 0) ~ "both",
+    TRUE ~ "other"
+  ))
+
+table(study_trt_ctl$study_type)
+# 863 have both
+# 235 have drug only
+# .. many have ctl only
+study_trt_ctl %>% filter(study_type=="drug_only") %>%
+  sample_n(20)
+study_trt_ctl %>% filter(study_type=="both") %>%
+  sample_n(20)
+# ---> HC studies??
+length(intersect(
+  study_trt_ctl %>% filter(study_type=="both") %>%
+  pull(study_acc),
+  study_mentions
+)) # 604 (70.0%)
+
+length(intersect(
+  study_trt_ctl %>% filter(study_type=="drug_only") %>%
+    pull(study_acc),
+  study_mentions
+)) # 151 (64.3%)
+
+compare_w_type <- samp_study_compare %>% 
+  filter(dbID_overlap > 0) %>% # 716
+  left_join(study_trt_ctl %>% 
+              select(study_acc, study_type) %>%
+              unique()) %>%
+  select(-dbIDx, -dbIDy, -dbID_overlap, -dbID_union) # 717 
+table(compare_w_type$study_type) # 572 are both
+
+# set up HC table
+compare_w_type %>%
+  separate_rows(dbID, sep=";") %>%
+  left_join(drugbank_study_dat %>% 
+              select(dbID, name, ATC) %>% unique()) %>%
+  write_csv("data/hc_drug_labels.csv")
 # ---------- set up assessment data ------ #
 nrow(trt) # number of samples with treatment fields
 trt_unique # number of unique

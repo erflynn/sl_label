@@ -1,7 +1,7 @@
 require('tidyverse')
 
 prefix <- "human"
-data_type <- "microarray"
+data_type <- "rnaseq"
 ds <- "sex"
 
 my_dat <- read_csv(sprintf("data/09_model_summary/%s_%s_%s_labels.csv", prefix, data_type, ds))

@@ -29,15 +29,18 @@ my.cols6 <- c (my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 by_study <- read_csv("data/study_sex_lab.csv")
 
+# load drugbank data 
+# each row is a study/drug not a study!
+drugbank_study_dat <- read_csv("data/02_labeled_data/study_to_drug.csv")
+drugbank_study_level <- drugbank_study_dat %>%
+  group_by(organism, data_type, study_acc) %>%
+  summarize(across(dbID:ATC, ~paste(unique(.), collapse=";"))) %>%
+  ungroup()
 
-# this is missing RNA-seq!
-drugbank_dat <- read_tsv("../labeling/geo2drug/data/02_labeled_data/drugbank_mapped_gse.txt")
-# NOTE on drug breakdown data problems:
-#   - 02_drug_gse_labeling.R (from geo2drug repo) - doesnt have RNA-seq 
-#   - 02_map_to_drugbank.R (current repo) - sample level
 
 study_db <- by_study %>% 
-  left_join(drugbank_dat %>% select(gse, dbID,name, ATC), by=c("study_acc"="gse")) 
+  left_join(drugbank_study_level %>% 
+              select(study_acc, dbID, name, ATC), by=c("study_acc")) 
 
 # --- plot sex breakdown of drug studies --- #
 ggplot(study_db %>% 
@@ -48,7 +51,7 @@ ggplot(study_db %>%
                 label_type=factor(label_type, levels=c("metadata", "expression"))), 
        aes(x=label_type))+
   geom_bar(aes(fill=study_sex))+
-  facet_wrap(.~organism, scales="free")+
+  facet_grid(data_type~organism, scales="free")+
   ylab("Number of studies")+
   xlab("Label source")+
   theme_bw() + 
@@ -58,7 +61,6 @@ ggplot(study_db %>%
 
 ggsave("figures/paper_figs/supp_drug_sex_breakdown.png")
 
-# table with counts for study breakdown
 study_breakdown_drug <- study_db %>% 
   select(-name) %>%
   filter(label_type=="expression") %>%
@@ -78,8 +80,8 @@ study_breakdown_drug <- study_db %>%
 mult_map <- comb_metadata %>% 
   filter(str_detect(study_acc, ";")) %>%
   separate_rows(study_acc, sep=";") %>%
-  left_join(drugbank_dat %>% select(gse, dbID), 
-            by=c("study_acc"= "gse")) %>%
+  left_join(drugbank_study_dat %>% select(study_acc, dbID), 
+            by=c("study_acc")) %>%
   select(-platform, -study_acc) %>%
   group_by(sample_acc) %>%
   mutate(dbID=paste(unique(dbID[!is.na(dbID)]), collapse=";")) %>%
@@ -87,8 +89,9 @@ mult_map <- comb_metadata %>%
 
 sing_map <- comb_metadata %>% 
   filter(!str_detect(study_acc, ";")) %>%
-  left_join(drugbank_dat %>% select(gse, dbID), 
-            by=c("study_acc"= "gse")) %>%
+  left_join(drugbank_study_dat %>% 
+              select(study_acc, dbID), 
+            by=c("study_acc")) %>%
   select(-platform, -study_acc) 
 
 drug_sample_dat <- mult_map %>% 
@@ -125,7 +128,9 @@ atc_names <- read.delim("../labeling/geo2drug/data/deprecated/ref_data/atc_class
                         header=FALSE, stringsAsFactors = FALSE)
 colnames(atc_names) <- c("class", "descript")
 
-study_db2 <- study_db %>% 
+study_db2 <- by_study %>% 
+  left_join(drugbank_study_dat %>%  # join to study/drug
+              select(study_acc, dbID, name, ATC), by=c("study_acc"))%>%
   filter(!is.na(dbID)) %>%
   mutate(class=substr(ATC, 1, 1)) %>%
   left_join(atc_names, by=c("class"="class")) %>%
@@ -136,12 +141,14 @@ study_db2 <- study_db %>%
     TRUE ~ study_sex)) %>%
   filter(!is.na(descript)) %>%
   mutate(ATC_class=paste(class, descript, sep=" - ")) %>%
-  select(-label_type, -descript)
+  select(-label_type, -descript) %>%
+  select(organism, data_type, study_acc, everything())  %>%
+  arrange(organism, data_type, study_acc)
 
-study_db2 %>% write_csv("data/drug_studies.csv")
+study_db2 %>% write_csv("data/drug_studies.csv") # study-drug is a row
 
 # plot ATC breakdown
-ggplot(study_db2 %>% filter(organism=="human"), 
+ggplot(study_db2 %>% filter(organism=="human" & study_sex!="unknown"), 
        aes(x=class, fill=ATC_class))+
   geom_histogram(stat="count")+
   facet_grid(study_sex ~ .)+  
@@ -153,7 +160,7 @@ ggplot(study_db2 %>% filter(organism=="human"),
         legend.title = element_blank())
 ggsave("figures/paper_figs/fig5_drug_breakdown_human.pdf")
 
-ggplot(study_db2 %>% filter(organism=="mouse"), 
+ggplot(study_db2 %>% filter(organism=="mouse" & study_sex!="unknown"), 
        aes(x=class, fill=ATC_class))+
   geom_histogram(stat="count")+
   facet_grid(study_sex ~ .)+  
@@ -168,6 +175,8 @@ ggsave("figures/paper_figs/fig5_drug_breakdown_mouse.pdf")
 
 # --- Run statistical tests for enrichment --- #
 count_per_class_df <- study_db2 %>% 
+#counts_per_class_df <- manual_sl_class %>%
+#count_per_class_df <- hc_drugs_dat %>% 
   select(organism, class, study_sex) %>%
   group_by(organism, study_sex) %>%
   mutate(tot=n()) %>%
@@ -184,6 +193,7 @@ count_per_class_df <- study_db2 %>%
 
 # create lists of data frames, grouped by organism and class  
 class_mixed_vs_single <- count_per_class_df %>%
+  filter(!study_sex %in% c("unknown")) %>%
   mutate(study_sex=case_when(
     study_sex=="male only" ~ "single sex",
     study_sex=="female only" ~ "single sex",
@@ -196,6 +206,7 @@ class_mixed_vs_single <- count_per_class_df %>%
   group_split(organism, class) 
   
 class_f_vs_m <- count_per_class_df %>%
+  filter(!study_sex %in% c("unknown")) %>%
   filter(study_sex!="mixed sex") %>%
   group_split(organism, class) 
   
@@ -205,20 +216,24 @@ class_names <- lapply(class_f_vs_m, function(x)
 # function for running a chisq test on a data frame
 runCHisq <- function(grp_data, class_names) {
   res_dat <- lapply(grp_data, function(x) { 
-  my_df <- data.frame(x[,c("num_in_grp", "num_not_in_grp")])
-  too_small <- (min(my_df) <= 5)
-  if (too_small) {
-    return(NA)
-  }
-  rownames(my_df) <- x$study_sex
-  res <- chisq.test(my_df)
-  pval <- res$p.value
-  resid <- res$residuals[,"num_in_grp"]
-  return(list("pval"=pval, "resid1"=resid[1], "resid2"=resid[2] ))
+    my_df <- data.frame(x[,c("num_in_grp", "num_not_in_grp")])
+    too_small <- (min(my_df) <= 5)
+    if (too_small) {
+      return(NA)
+    }
+    rownames(my_df) <- x$study_sex
+    res <- chisq.test(my_df)
+    pval <- res$p.value
+    resid <- res$residuals[,"num_in_grp"]
+    return(list("pval"=pval, "resid1"=resid[1], "resid2"=resid[2] ))
   })
-  names(res_dat) <- class_names
-  res_df <- data.frame(do.call(rbind,res_dat[!is.na(res_mf)]))
-  res_df$grp <- rownames(res_df)
+  print(is.na(res_dat))
+  print(class_names[!is.na(res_dat)])
+  
+  #names(res_dat) <- class_names
+  res_df <- data.frame(do.call(rbind, res_dat[!is.na(res_dat)]))
+  
+  res_df$grp <- class_names[!is.na(res_dat)]
   return(res_df)
 }
 
@@ -234,12 +249,57 @@ ms_chisq %>% filter(pval < p_cut) %>%
 fm_chisq %>% filter(pval < p_cut) %>%
   rename("resid_f"=resid1, "resid_m"=resid2)
 
+# ------ COMPARE TO HC STUDIES ------ #
+hc_drugs <- read_csv("data/hc_drug_labels.csv")
+hc_drugs %>%
+  left_join(by_study  %>% 
+              filter(label_type=="expression")%>% 
+              select(-organism, -data_type, -label_type), by=c("study_acc")) %>%
+  select(study_acc, study_sex, organism) %>% 
+  unique() %>%
+  mutate(study_sex=ifelse(is.na(study_sex), "unknown", study_sex)) %>%
+  mutate(study_sex=factor(study_sex, levels=c("female only", "mostly female", 
+                                              "mixed sex", "mostly male", 
+                                              "male only", "unknown"))) %>%
+  ggplot(aes(x=organism, fill=study_sex)) + 
+  geom_bar()+
+  ylab("Number of studies")+
+  xlab("")+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_fill_manual(values=my.cols6)
+
+hc_drugs_dat <- hc_drugs %>%
+  left_join(by_study  %>% 
+              filter(label_type=="expression")%>% 
+              select(-organism, -data_type, -label_type), by=c("study_acc")) %>%
+  mutate(study_sex=ifelse(is.na(study_sex), "unknown", study_sex)) %>%
+  mutate(class=substr(ATC, 1, 1)) %>%
+  left_join(atc_names, by=c("class"="class")) %>%
+  mutate(study_sex=case_when(
+    is.na(study_sex) ~ "unknown",
+    study_sex=="mostly female" ~ "mixed sex",
+    study_sex=="mostly male" ~ "mixed sex", 
+    TRUE ~ study_sex)) %>%
+  filter(!is.na(descript)) %>%
+  mutate(ATC_class=paste(class, descript, sep=" - ")) %>%
+  select( -descript) 
+hc_drugs_dat %>%  ggplot(aes(x=class, fill=ATC_class))+
+  geom_histogram(stat="count")+
+  facet_grid(study_sex ~ organism)+  
+  ylab("Number of studies")+
+  xlab("ATC class")+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.title = element_blank())
+
 # ------ COMPARE TO WANG ET AL ------ #
 drug_pert_manual <- read_csv("../drug_expression/drug_labeling/data/single_drug_perturbations-v1.0.csv")
 drug_pert_auto <- read_csv("../drug_expression/drug_labeling/data/single_drug_perturbations-p1.0.csv")
 length(unique(drug_pert_manual$geo_id)) # 337
 length(unique(drug_pert_auto$geo_id)) # 378
-
 
 
 # add in sex labels
@@ -251,6 +311,23 @@ manual_sl <- drug_pert_manual %>%
   left_join(by_study  %>% 
               filter(label_type=="expression")%>% 
               select(-organism, -data_type, -label_type), by=c("study_acc")) 
+
+length(unique(manual_sl$study_acc))
+length(unique(manual_sl$drugbank_id))
+
+# what is the overlap?
+manual_geo_studies <- unique(manual_sl$study_acc) # 299
+auto_geo_studies <- drug_pert_auto %>% filter(organism != "rat") %>%
+  distinct(geo_id) %>% pull() # 308
+
+our_drug_studies <- drugbank_study_level %>% 
+  filter(data_type=="microarray" & 
+           str_detect(study_acc, "GSE")) %>%
+  distinct(study_acc) %>% pull() # 4461
+
+length(intersect(manual_geo_studies, our_drug_studies)) # 195
+length(intersect(auto_geo_studies, our_drug_studies)) # 122
+
 for_plot <- manual_sl %>% 
   select(study_acc, study_sex, organism) %>% 
   unique() %>%

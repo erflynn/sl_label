@@ -1,8 +1,15 @@
 # 01a_metadata_sex_breakdown.R
 # E Flynn
 # 7/20/2020
-# code for looking at the metadata sex breakdown 
-# + also producing the table with the missingness -AND- overlap
+# Updated 8/12/2020 to add in missing RNA-seq samples
+# 
+# Code for looking at the metadata sex breakdown. 
+# This generates by-study and by-sample tables used for follow up analyses.
+# We also plot the alluvial diagrams.
+#
+# TODO: 
+# - when to exclude problem platforms?
+# - separate out into multiple files
 
 require('tidyverse')
 require('data.table')
@@ -111,9 +118,71 @@ comb_metadata <- do.call(rbind, list(human_microarray,
   select(sample_acc, organism, data_type, platform, study_acc, 
          metadata_sex, expr_sex, p_male ) 
 
+# ---- read in QC information for RNA-seq ---- #
+h_present <- read_csv("data/01_metadata/human_rnaseq_exp_to_sample2.csv") %>% mutate(organism="human")
+m_present <- read_csv("data/01_metadata/mouse_rnaseq_exp_to_sample2.csv") %>% mutate(organism="mouse")
 
-stopifnot(length(unique(comb_metadata$sample_acc))==nrow(comb_metadata))
-write_csv(comb_metadata, "data/01_metadata/combined_human_mouse_meta.csv")
+h_es <- read_csv("data/01_metadata/human_exp_to_sample_counts.csv") %>% select(-present, -study_acc)
+m_es <- read_csv("data/01_metadata/mouse_exp_to_sample_counts.csv") %>% select(-present, -study_acc)
+qc_data <- h_present %>% left_join(h_es) %>% 
+  bind_rows(m_present %>% left_join(m_es) ) %>%
+  select(organism, study_acc, sample_acc, present, num_reads)
+
+missing_read_cts <- qc_data %>% filter(present & is.na(num_reads)) 
+missing_read_cts %>% write_csv("data/missing_read_counts.csv")
+
+# missing read cts
+h_m <- read_csv("data/human_read_counts_m.csv") %>% 
+  mutate(organism="human") %>% 
+  select(organism, everything())
+m_m <- read_csv("data/mouse_read_counts_m.csv") %>%
+  mutate(organism="mouse") %>% 
+  select(organism, everything())
+fill_in_rc <- h_m %>% bind_rows(m_m)
+
+# this fills in it all!
+missing_read_cts %>% select(-num_reads) %>%
+  left_join(fill_in_rc %>% 
+              select(sample_acc, num_reads)) 
+
+qc_data2 <- qc_data %>% 
+  anti_join(fill_in_rc, by="sample_acc") %>%
+  bind_rows(fill_in_rc)
+
+comb_metadata_w_qc <- comb_metadata %>% 
+  left_join(qc_data2)
+
+comb_metadata_w_qc %>% 
+  filter(!is.na(num_reads) & num_reads < 100000)  # removes 6.8k
+
+
+comb_metadata_w_qc %>%
+  filter(data_type=="rnaseq" & is.na(p_male) & present &
+          num_reads > 100000) %>%
+  select(-platform, -metadata_sex, -expr_sex) %>%
+  select(organism, study_acc, sample_acc, present, num_reads) %>%
+  write_csv("data/missing_rnaseq_pred.csv")
+  #%>% # 4k
+  #anti_join(missing_read_cts, by="sample_acc") # 588 
+
+missing_dat <- read_csv("data/human_rnaseq_sl_m.csv") %>%
+  bind_rows( read_csv("data/mouse_rnaseq_sl_m.csv") )
+
+missing_filled_in <- comb_metadata_w_qc %>%
+  filter(data_type=="rnaseq" & is.na(p_male) & present &
+           num_reads > 100000) %>%
+  left_join(missing_dat, by=c("sample_acc"="id")) %>%
+  select(-p_male, -expr_sex) %>%
+  rename(p_male=pred) %>%
+  mutate(expr_sex=ifelse(p_male > 0.5, "male", "female")) %>%
+  select(colnames(comb_metadata_w_qc))
+
+comb_metadata_w_qc2 <- comb_metadata_w_qc %>%
+  anti_join(missing_filled_in, by="sample_acc") %>%
+  bind_rows(missing_filled_in)
+
+stopifnot(length(unique(comb_metadata_w_qc2$sample_acc))==nrow(comb_metadata_w_qc2))
+write_csv(comb_metadata_w_qc2, "data/01_metadata/combined_human_mouse_meta.csv")
 
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 # ----- 3. COUNT TABLES ----- #
@@ -123,7 +192,7 @@ comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 cutoff <- comb_metadata %>%
   mutate(expr_sex=case_when(
     is.na(expr_sex) ~ "unknown",
-    p_male < 0.7 & p_male > 0.3 ~ "mixed",
+    p_male < 0.7 & p_male > 0.3 ~ "unclear",
     TRUE ~ expr_sex
   ))
 
@@ -136,8 +205,16 @@ ggplot(cutoff,
 
 
 by_sample <- comb_metadata %>% 
-  select(-p_male) %>%
-  mutate(expr_sex=ifelse(is.na(expr_sex), "unknown", expr_sex)) %>%
+  mutate(expr_sex=case_when(
+    is.na(expr_sex) ~ "missing",
+    p_male < 0.7 & p_male > 0.3 ~ "unlabeled",
+    TRUE ~ expr_sex
+  )) %>%
+  mutate(metadata_sex=ifelse(is.na(metadata_sex) | metadata_sex=="unknown", 
+                             "unlabeled", metadata_sex)) %>%
+  filter(data_type=="microarray" |
+           present & num_reads > 100000) %>%
+  #select(-p_male) %>%
   pivot_longer(cols=c(expr_sex, metadata_sex), 
                names_to="label_type",
                values_to="sex_lab") %>%
@@ -148,15 +225,12 @@ by_sample <- comb_metadata %>%
                              TRUE ~ data_type)) %>%
   mutate(label_type=factor(label_type, levels=c("metadata", "expression")))
 
-# check we havent added samples! (multiplied by 2 b/c separated into expr/metadata)
-stopifnot(nrow(by_sample)/2==length(unique(comb_metadata$sample_acc)))
-stopifnot(nrow(by_sample)/2==nrow(comb_metadata))
-stopifnot(nrow(by_sample)/2==length(unique(by_sample$sample_acc)))
-         
+
 ggplot(by_sample %>%
          mutate(sex_lab = ifelse(sex_lab=="mixed", "mixed/pooled", sex_lab)) %>%
          mutate(sex_lab=factor(sex_lab, 
-                               levels=c("female", "mixed/pooled", "male", "unknown"))) %>%
+                               levels=c("female", "mixed/pooled", 
+                                        "male", "unlabeled"))) %>%
          rename(`sample sex`=sex_lab), 
        aes(x=data_type, fill=`sample sex`))+
   geom_bar()+
@@ -167,18 +241,21 @@ ggplot(by_sample %>%
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())+
   scale_y_continuous(labels = comma)+
-  scale_fill_manual(values=my.cols4) 
+  scale_fill_manual(values=c(my.cols4) )
 
 ggsave("figures/paper_figs/fig1_sample.png")
 
+by_sample %>% write_csv("data/sample_metadata_filt.csv")
 
 # by-study counts - NOTE: slow
 by_study <- by_sample %>%
   separate_rows(study_acc, sep=";") %>%
+  select(-present, -num_reads, -p_male) %>%
   group_by(study_acc, organism, data_type, label_type) %>%
   summarize(num_tot=n(),
          num_f=sum(sex_lab=="female", na.rm=TRUE),
-         num_m=sum(sex_lab=="male", na.rm=TRUE))
+         num_m=sum(sex_lab=="male", na.rm=TRUE),
+         num_unlab=sum(sex_lab=="unlabeled", na.rm=TRUE))
 
 by_study2 <- by_study %>%
   mutate(num_present=num_f+num_m) %>%
@@ -230,11 +307,13 @@ flow_freq_counts <- by_sample %>%
     unique() %>%
     ungroup() %>%
     mutate(row_id=1:n()) %>%
-    pivot_longer(cols=c("metadata", "expression"), names_to="labeling_method", values_to="sex") %>%
-    mutate(sex=ifelse(sex=="unknown", "unlabeled", sex)) %>%
+    pivot_longer(cols=c("metadata", "expression"), 
+                 names_to="labeling_method", values_to="sex") %>%
+    mutate(sex=ifelse(sex %in% c("unknown","missing", "not labeled"), "unlabeled", sex)) %>%
     filter(sex != "mixed")   %>%
     mutate(row_id=as.factor(row_id), 
-           labeling_method=factor(labeling_method, levels=c("metadata", "expression")),
+           labeling_method=factor(labeling_method, 
+                                  levels=c("metadata", "expression")),
            sex=factor(sex, levels=c("female", "male", "unlabeled"))) %>%
     unique() 
   
@@ -259,6 +338,7 @@ ggsave("figures/paper_figs/fig1_sample_alluvial.png")
 
 # study level
 study_flow_freq_counts <- by_study2 %>%
+  mutate(study_sex=as.character(study_sex)) %>%
   mutate(study_sex=case_when( # for easier vis!
     (label_type=="metadata" & study_sex=="mostly male") ~ "mixed sex",
     (label_type=="metadata" & study_sex=="mostly female") ~ "mixed sex",
@@ -313,9 +393,10 @@ counts_sample <- by_sample %>%
   ungroup() 
 
 counts_sample_table <- counts_sample %>% 
-  pivot_wider(names_from=sex_lab, values_from=n, values_fill = list(n=0)) %>%
-  mutate(num_samples=(female+male+mixed+unknown)) %>%
-  mutate(frac_missing=unknown/num_samples,
+  pivot_wider(names_from=sex_lab, values_from=n, 
+              values_fill = list(n=0)) %>%
+  mutate(num_samples=(female+male+mixed+unlabeled)) %>%
+  mutate(frac_missing=unlabeled/num_samples,
          frac_female=female/num_samples,
          frac_male=male/num_samples) 
 
@@ -348,22 +429,23 @@ counts_study_table %>%
   write_csv("tables/s1b_study_sex_counts.csv")
 
 
-# are the differences significant?
+# are the differences significant? can't do this! 
+# b/c RNA-seq metadata is lossy
 counts_sample_table %>% 
   filter(label_type=="metadata") %>% 
-  select(organism, data_type, unknown, num_samples) %>%
-  mutate(num_present=num_samples-unknown) %>%
+  select(organism, data_type, unlabeled, num_samples) %>%
+  mutate(num_present=num_samples-unlabeled) %>%
   select(-num_samples) 
 
-# // TODO: stop hard-coding
-mat1 <- matrix(c(233526,96982,195258, 34531), byrow=TRUE, nrow=2)
-mat2 <- matrix(c(83926 ,39353, 298072,61070), byrow=TRUE, nrow=2)
-rownames(mat1) <- c("microarray", "rnaseq")
-colnames(mat1) <- c("missing", "present")
-human_sample_test <- chisq.test(mat1)
-
-human_sample_test$expected
-human_sample_test$observed
+# # // TODO: stop hard-coding
+# mat1 <- matrix(c(233526,96982,195258, 34531), byrow=TRUE, nrow=2)
+# mat2 <- matrix(c(83926 ,39353, 298072,61070), byrow=TRUE, nrow=2)
+# rownames(mat1) <- c("microarray", "rnaseq")
+# colnames(mat1) <- c("missing", "present")
+# human_sample_test <- chisq.test(mat1)
+# 
+# human_sample_test$expected
+# human_sample_test$observed
 
 # --- create Supplementary Table N --- #
 # overlap
