@@ -45,18 +45,21 @@ def parse_obj(my_acc, acc_type, obj_f, attr_f):
 		obj_links = [r.find("XREF_LINK") for r in obj.find("%s_LINKS" %acc_type).findall("%s_LINK" %acc_type)]
 		for obj_link in obj_links:
 			link_type = obj_link.find("DB").text # TODO, double check multiples
-			link_id = obj_link.find("ID").text
+			link_ids = obj_link.find("ID").text.rsplit(",")
 			if link_type=="ENA-SAMPLE":
-				samples.append(link_id)
-				list_samples.add(link_id)
+				for link_id in link_ids:
+					samples.append(link_id)
+					list_samples.add(link_id)
 			elif link_type=="ENA-RUN":
-				runs.append(link_id)
+				for link_id in link_ids:
+					runs.append(link_id)
 			elif link_type=="ENA-EXPERIMENT":
-				experiments.append(link_id)
-				list_experiments.add(link_id)
+				for link_id in link_ids:
+					experiments.append(link_id)
+					list_experiments.add(link_id)
 			else:
 				t = "other link"   
-		obj_f.write("%s\t%s\t%s\t%s\t%s\n" %(my_acc, title, ";".join(runs), ";".join(samples), ";".join(experiments)))
+		obj_f.write("\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\n" %(my_acc, title, ";".join(runs), ";".join(samples), ";".join(experiments)))
 		# find attributes
 		#attr_dict = {}
 		my_attr = obj.find("%s_ATTRIBUTES" %acc_type).findall("%s_ATTRIBUTE" %acc_type)
