@@ -20,63 +20,69 @@ list_experiments = set()
 
 def parse_obj(my_acc, acc_type, obj_f, attr_f):
 	my_f = "https://www.ebi.ac.uk/ena/data/view/%s&display=xml" %(my_acc)
-	with urllib.request.urlopen(my_f) as f:
-		tree=ET.parse(f)
-		root= tree.getroot()
-		obj = root.find(acc_type)
-		if (obj is None):
-			return -1
-		accession = obj.attrib["accession"]
-		if accession != my_acc:
-			print("Error mismatched accessions %s %s" % (my_acc, accession))
-			return -1
-		title = obj.find("TITLE").text
-		experiments = []
-		if acc_type == "RUN":
-			exp_ref = obj.find("EXPERIMENT_REF")
-			if exp_ref is not None:
-				experiment = exp_ref.attrib["accession"]
-				list_experiments.add(experiment)
-				experiments.append(experiment)
-		# find friends!
-		samples = []
-		experiments = []
-		runs = []
-		obj_links = [r.find("XREF_LINK") for r in obj.find("%s_LINKS" %acc_type).findall("%s_LINK" %acc_type)]
-		for obj_link in obj_links:
-			link_type = obj_link.find("DB").text # TODO, double check multiples
-			link_ids = obj_link.find("ID").text.rsplit(",")
-			if link_type=="ENA-SAMPLE":
-				for link_id in link_ids:
-					samples.append(link_id)
-					list_samples.add(link_id)
-			elif link_type=="ENA-RUN":
-				for link_id in link_ids:
-					runs.append(link_id)
-			elif link_type=="ENA-EXPERIMENT":
-				for link_id in link_ids:
-					experiments.append(link_id)
-					list_experiments.add(link_id)
-			else:
-				t = "other link"   
-		obj_f.write("\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\n" %(my_acc, title, ";".join(runs), ";".join(samples), ";".join(experiments)))
-		# find attributes
-		#attr_dict = {}
-		my_attr = obj.find("%s_ATTRIBUTES" %acc_type).findall("%s_ATTRIBUTE" %acc_type)
-		for attr in my_attr:
-			tag_text = attr.find("TAG").text
-			value_text = attr.find("VALUE").text
-			attr_f.write("%s\t%s\t%s\n" %(my_acc, tag_text, value_text))
-			#attr_dict[tag_text]= value_text
-		#obj_dict["attr"]=attr_dict
-		#return obj_dict
-		return 1
-	return -1
+	try:
+		with urllib.request.urlopen(my_f) as f:
+			tree=ET.parse(f)
+			root= tree.getroot()
+			obj = root.find(acc_type)
+			if (obj is None):
+				return -1
+			accession = obj.attrib["accession"]
+			if accession != my_acc:
+				print("Error mismatched accessions %s %s" % (my_acc, accession))
+				return -1
+			title = obj.find("TITLE").text
+			experiments = []
+			if acc_type == "RUN":
+				exp_ref = obj.find("EXPERIMENT_REF")
+				if exp_ref is not None:
+					experiment = exp_ref.attrib["accession"]
+					list_experiments.add(experiment)
+					experiments.append(experiment)
+			# find friends!
+			samples = []
+			runs = []
+			obj_links = [r.find("XREF_LINK") for r in obj.find("%s_LINKS" %acc_type).findall("%s_LINK" %acc_type)]
+			for obj_link in obj_links:
+				link_type = obj_link.find("DB").text # TODO, double check multiples
+				link_ids = obj_link.find("ID").text.rsplit(",")
+				if link_type=="ENA-SAMPLE":
+					for link_id in link_ids:
+						samples.append(link_id)
+						list_samples.add(link_id)
+				elif link_type=="ENA-RUN":
+					for link_id in link_ids:
+						runs.append(link_id)
+				elif link_type=="ENA-EXPERIMENT":
+					for link_id in link_ids:
+						experiments.append(link_id)
+						list_experiments.add(link_id)
+				else:
+					t = "other link"   
+			obj_f.write("\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\n" %(my_acc, title, ";".join(runs), ";".join(samples), ";".join(experiments)))
+			# find attributes
+			#attr_dict = {}
+			my_attr = obj.find("%s_ATTRIBUTES" %acc_type).findall("%s_ATTRIBUTE" %acc_type)
+			for attr in my_attr:
+				tag_text = attr.find("TAG").text
+				value_text = attr.find("VALUE").text
+				attr_f.write("%s\t%s\t%s\n" %(my_acc, tag_text, value_text))
+				#attr_dict[tag_text]= value_text
+			#obj_dict["attr"]=attr_dict
+			#return obj_dict
+			return 1
+		return -1
+	except URLError as urlerr:
+		print("URL error")
+		return -1
+	except:
+		print("Unexpected error:", sys.exc_info()[0])
+		return -1
 
 
 #setup
-idx = sys.argv[1]
-with open("data/rnaseq_runs_%s.csv" %idx, 'r') as f:
+idx = sys.argv[1].zfill(3)
+with open("data/rnaseq_runs_split%s" %idx, 'r') as f:
 	list_runs = [run.rstrip("\n") for run in f]
 
 
