@@ -166,6 +166,8 @@ mapped_lab %>% write_csv("data/sample_mapped_drug_type.csv")
 sample_data <- read_csv("data/rb_sample_drug_mapped.csv")
 study_data <- read_csv("data/02_labeled_data/study_to_drug.csv")
 
+
+study_data %>% group_by(study_acc) %>% count() %>% arrange(desc(n))
 comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
 
 sample_study <- comb_metadata %>% 
@@ -264,6 +266,9 @@ compare_w_type %>%
   separate_rows(dbID, sep=";") %>%
   left_join(drugbank_study_dat %>% 
               select(dbID, name, ATC) %>% unique()) %>%
+  rename(sample_terms=study_type,
+         drug_name=name) %>%
+  select(-sample_terms, everything(), sample_terms) %>%
   write_csv("data/hc_drug_labels.csv")
 # ---------- set up assessment data ------ #
 nrow(trt) # number of samples with treatment fields

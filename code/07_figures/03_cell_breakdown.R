@@ -184,7 +184,9 @@ ggplot(sex_lab_w_source %>%
 
 
 # --- CELL LINE SEX LABELS --- #
-cell_df <- read.csv("data/00_db_data/cellosaurus_df_v2.txt")
+
+cell_df <- read.csv("data/00_db_data/cellosaurus_df_v2.txt") 
+# // TODO v3 breaks alleles, use allele_freq3
 cell_sex <- cell_df %>% 
   select(primary_accession, cl, sex, alleles) %>% 
   mutate(sex=tolower(sex))  %>%
@@ -388,7 +390,8 @@ cl_level_lab <- samples_cl_sl %>%
   filter(!is.na(cl_acc)) %>%
   select(-sample_acc, -organism, 
          -data_type, -source_type, 
-         -metadata_sex, -study_acc) %>%
+         -metadata_sex, -study_acc, 
+         -platform) %>%
   group_by(cl_acc) %>%
   mutate(num_f=sum(expr_sex=="female", na.rm=TRUE), 
          num_m=sum(expr_sex=="male", na.rm=TRUE),
@@ -556,7 +559,7 @@ dps_some_swtch <- dps %>%
                filter(frac_m > 0.40 & frac_m < 0.60),
              by="cl_acc") %>%
   filter(switching_category=="some_switch") %>% 
-  mutate(dip_pass=ifelse((dip_p > 0.05), "unimodal", "mulitmodal"))
+  mutate(dip_pass=ifelse((dip_p > 0.05), "unimodal", "multimodal"))
 # TODO -- do we need to multiple hypothesis correct here?
 
 # breakdown uni- vs multi-modal
@@ -587,7 +590,8 @@ df_switch3 <- df_switch2 %>%
   left_join(cell_sex2 %>% select(cl_acc, cl_name)) %>%
   left_join(dip_test_col) %>%
   select(cl_acc, cl_name, switching_category, cl_annot_sex, cl_allele_sex, 
-         avg_p_male, se_p_male,  num_s, frac_f, frac_m, dip_p) %>%
+         avg_p_male, se_p_male,  num_s, frac_f, frac_m, dip_p) %>% 
+  mutate(across(contains("frac|p_male|ci|dip_p"), signif, 3)) %>%
   rename(`Accession`=cl_acc, `Name`=cl_name, `Category`=switching_category,
          `Annotated sex`=cl_annot_sex, `Reported sex (amel.)`=cl_allele_sex,
          `Average P(male)`=avg_p_male, `SE P(male)`=se_p_male,
@@ -641,3 +645,95 @@ ggplot(hc_switch %>%
   geom_hline(yintercept=1, lty=1, col="gray")+
   geom_hline(yintercept=0, lty=1, col="gray")
 
+
+
+# ---- allele frequency in text ---- #
+allele_freq <- read_csv("data/00_db_data/cellosaurus_allele_freq.csv")
+
+allele_freq2 <- allele_freq %>% filter(`Not_detected`==0 & Y==0) %>%
+  select(-Y, -Not_detected) %>%
+  mutate(across(c(`X,Y`,`X`), ~./num_srcs)) %>%
+  arrange(`X`)
+
+ggplot(allele_freq2 %>% 
+         mutate(cl_acc=factor(cl_acc, levels=unique(allele_freq2$cl_acc))), 
+       aes(x=cl_acc, y=`X,Y`, size=num_srcs))+
+  geom_point(alpha=0.5)+
+  ylab("fraction XY chromosome")+
+  xlab("cell line")+
+  theme_bw()+
+  theme(axis.ticks.x=element_blank(),
+        axis.text.x = element_blank())
+
+# allele_freq2 %>%
+#   mutate(cl_acc=factor(cl_acc, levels=unique(allele_freq2$cl_acc))) %>%
+#   ggplot(aes(x=cl_acc, y=frac_src, fill=allele))+geom_bar(stat="identity")
+
+compare_src <- allele_freq2 %>% 
+  mutate(cl_acc=tolower(cl_acc)) %>%
+  inner_join(cl_level_lab , by=c("cl_acc")) %>%
+  select(cl_acc, num_srcs, `X,Y`, `X`, `frac_f`, `frac_m`, `avg_p_male`, `se_p_male`) %>%
+  filter(!is.na(frac_m)) %>%
+  left_join(dip_test_col) %>%
+  mutate(dip_pass=ifelse((dip_p > 0.05), "unimodal", "multimodal")) %>%
+  mutate(
+    ci_l=(avg_p_male-1.96*se_p_male),
+    ci_u=(avg_p_male+1.96*se_p_male)
+  )
+
+cor.test(compare_src$`X,Y`, compare_src$avg_p_male) # 0.218
+
+
+ggplot(compare_src %>%
+         rename("Number of STR refs"=num_srcs,
+                "SE p-male"=se_p_male), 
+       aes(x=`X,Y`, y=avg_p_male, col=`Number of STR refs`, size=`SE p-male`))+
+  geom_point(alpha=0.5)+
+  ylim(0,1)+
+  #geom_errorbar(aes(ymin=ci_l, ymax=ci_u))+
+  facet_wrap(.~dip_pass)+
+  theme_bw()+
+  ylab("Average p-male")+
+  xlab("Fraction male STR reported")
+ggsave("figures/paper_figs/compare_str_fraction.png")
+
+# // TODO - is it worth adding the reference breakdown?
+
+
+# -------- LOOK AT STUDIES ------- #
+# is it between study heterogeneity or within study heterogeneity?
+head(hc_switch)
+
+study_grp <- samples_cl_sl %>%
+  semi_join(df_switch, by="cl_acc") %>%
+  separate_rows(study_acc, sep=";") %>%
+  group_by(cl_acc) %>%
+  group_by(cl_acc, study_acc) %>%
+  summarize(num_samples=n(),
+          avg_p_study=mean(p_male),
+          se_p_study=sd(p_male)) %>%
+  ungroup() %>%
+  group_by(cl_acc) %>%
+  mutate(num_studies=n()) %>%
+  ungroup()
+
+cls <- study_grp %>% filter(num_studies > 3, num_samples > 3) %>% 
+  distinct(cl_acc) %>% pull()
+
+study_grp %>% 
+  left_join(df_switch) %>% 
+  left_join(dip_test_col) %>%
+  mutate(dip_pass=ifelse((dip_p > 0.05), "unimodal", "multimodal")) %>%
+  mutate(cl_acc=factor(cl_acc, levels=df_switch$cl_acc[order(df_switch$avg_p_male)])) %>%
+  filter(cl_acc %in% cls &
+           switching_category != "insufficient samples") %>%
+  ggplot(aes(y=cl_acc, x=avg_p_study, 
+             size=num_samples))+
+  geom_point(alpha=0.5)+
+  theme(axis.ticks.y=element_blank(),
+        axis.text.y = element_blank())+
+  facet_grid(switching_category ~ dip_pass, scales="free_y")
+
+####
+
+#### empirical distribution clustering 

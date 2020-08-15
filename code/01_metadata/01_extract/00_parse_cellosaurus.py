@@ -28,10 +28,10 @@ cl_dict = {} # dictionary for holding output
 #     acc_type = acc.get("type") # primary or secondary
 #     if acc_type=="primary":
 #       primary_acc=acc_num
-#   acc_list.append(primary_acc)	
-
+#   acc_list.append(primary_acc)
+# 
 # cl_parent = cls[acc_list.index("CVCL_SH91")]
-# cl_marker = cls[acc_list.index("CVCL_0035")]
+# cl_marker = cls[acc_list.index("CVCL_7175")]
 
 for cl in cls:
 	# initialize variables
@@ -85,8 +85,8 @@ for cl in cls:
 			database = xref.get("database")
 			if database == "ATCC":
 				atcc_acc=xref.get("accession")
-
-	# grab markers
+	
+	# grab markers and their sources
 	str_list = cl.find("str-list")
 	if str_list is not None:
 		marker_list = str_list.find("marker-list")
@@ -96,10 +96,24 @@ for cl in cls:
 				marker_id = marker.get("id")
 				if marker_id=="Amelogenin":
 					marker_data_el = marker.find("marker-data-list").findall("marker-data")
-					alleles = []
+					alleles = { }
 					for m in marker_data_el:
-						alleles.append([allele.text for allele in m.findall("alleles")])
-		
+						my_alleles = m.find("alleles").text
+						source_list = m.find("source-list")
+						if source_list is not None:
+							my_sources = [my_source.text for my_source in source_list.findall("source")]
+							ref_list = source_list.findall("reference-list")
+							if len(ref_list) > 0 and ref_list is not None:
+								my_refs = []
+								for refs in ref_list:
+									my_refs.append([ref.text for ref in refs.findall("reference")])
+							else:
+								my_refs=""
+						else:
+							my_sources=""
+							my_refs=""
+						alleles[my_alleles]= {"src": my_sources, "ref":my_refs}
+
 	# extract the disease of origin - this may be helpeful
 	dz_list = cl.find("disease-list")
 	if dz_list is not None:
@@ -130,6 +144,6 @@ for cl in cls:
 
 
 # write out the json
-with open("data/00_db_data/cellosaurus_v2.json", 'w') as f:
+with open("data/00_db_data/cellosaurus_v3.json", 'w') as f:
 	cl_str = json.dumps(cl_dict)
 	f.write(cl_str)
