@@ -1,6 +1,15 @@
+# Code for clustering the distributions of cell line sex labels 
 
-# cluster the distributions
-head(study_grp)
+require('tidyverse')
+require('HistDAWass')
+
+
+# objects needed:
+# - study_grp
+# - df_switch
+# - dip_test_col
+# - samples_cl_sl
+
 res <- study_grp %>% 
   filter(!is.na(avg_p_study) & num_samples >= 3) %>%
   group_by(cl_acc) %>%
@@ -80,9 +89,7 @@ study_plt %>% filter(cluster==6) %>%
         axis.ticks.y=element_blank())
 
 
-# 1. samples within studies
-
-# cluster studies?
+# -----  cluster distribution of samples within studies ------ #
 my_s <- samples_cl_sl %>% 
   filter(!is.na(cl_acc) & !is.na(p_male)) %>%
   select(cl_acc, sample_acc, study_acc, p_male)  %>%
@@ -145,7 +152,9 @@ my_s4 %>% filter(cluster==5) %>%
   facet_grid(study_acc~., scales="free")
 
 
-# 2. cell lines across all samples - #
+
+
+# --- cluster cell lines across all samples --- #
 cl_samp <- samples_cl_sl %>% 
   filter(!is.na(cl_acc) & !is.na(p_male)) %>%
   select(cl_acc, sample_acc, p_male)  %>%
@@ -185,11 +194,11 @@ my_s5 %>%
   ggplot(aes(x=p_male, group=cl_acc))+geom_density()+
   facet_grid(cluster~., scales="free")
 
+# ---------------------------- STOP HERE ---------------- #
 
 # ---------- examples ----------- #
   
 # https://stackoverflow.com/questions/40686753/cluster-histograms-using-earth-movers-distance-r
-library(HistDAWass)
 v1 <- rnorm(n=100, mean = 10, sd = 1)  # cluster 1 (around 10)
 v2 <- rnorm(n=100, mean = 50, sd = 5)  # cluster 2 (around 50)
 v3 <- rnorm(n=100, mean = 100, sd = 10) # cluster 3 (around 100)

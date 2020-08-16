@@ -184,7 +184,11 @@ comb_metadata_w_qc2 <- comb_metadata_w_qc %>%
 stopifnot(length(unique(comb_metadata_w_qc2$sample_acc))==nrow(comb_metadata_w_qc2))
 write_csv(comb_metadata_w_qc2, "data/01_metadata/combined_human_mouse_meta.csv")
 
-comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
+comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv", col_types="cccccccdld")
+comb_metadata %>% filter(data_type=="rnaseq") %>% 
+  distinct(sample_acc) %>% 
+  write_csv("data/rnaseq_runs.csv", col_names=FALSE)
+
 # ----- 3. COUNT TABLES ----- #
 # TODO: UPDATE THE COUNTS  / overlap
 

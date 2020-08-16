@@ -43,8 +43,11 @@ sample_source_df <- read_csv(sprintf("data/02_labeled_data/%s_%s_sample_source.c
 
 set.seed(114)
 
-pos_cl <- sample_source_df %>% filter(source_type=="named_cl") %>% left_join(mapping, by=c("acc"="sample_acc")) %>% select(-source_type)
-neg_cl <- sample_source_df %>% filter(source_type=="tissue")  %>% left_join(mapping, by=c("acc"="sample_acc")) %>% select(-source_type)
+pos_cl <- sample_source_df %>% 
+  filter(source_type=="named_cl") %>% 
+  left_join(mapping, by=c("acc"="sample_acc")) %>% select(-source_type)
+neg_cl <- sample_source_df %>% filter(source_type=="tissue")  %>% 
+  left_join(mapping, by=c("acc"="sample_acc")) %>% select(-source_type)
 # note - these do overlap!!
 
 
