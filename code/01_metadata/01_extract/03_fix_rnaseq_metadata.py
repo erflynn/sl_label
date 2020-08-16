@@ -39,6 +39,7 @@ def parse_obj(my_acc, acc_type, obj_f, attr_f):
 					experiment = exp_ref.attrib["accession"]
 					list_experiments.add(experiment)
 					experiments.append(experiment)
+			
 			# find friends!
 			samples = []
 			runs = []
@@ -60,20 +61,14 @@ def parse_obj(my_acc, acc_type, obj_f, attr_f):
 				else:
 					t = "other link"   
 			obj_f.write("\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\t\"%s\"\n" %(my_acc, title, ";".join(runs), ";".join(samples), ";".join(experiments)))
+			
 			# find attributes
-			#attr_dict = {}
 			my_attr = obj.find("%s_ATTRIBUTES" %acc_type).findall("%s_ATTRIBUTE" %acc_type)
 			for attr in my_attr:
-				tag_text = attr.find("TAG").text
-				value_text = attr.find("VALUE").text
-				attr_f.write("%s\t%s\t%s\n" %(my_acc, tag_text, value_text))
-				#attr_dict[tag_text]= value_text
-			#obj_dict["attr"]=attr_dict
-			#return obj_dict
+				tag = attr.find("TAG")
+				val = attr.find("VALUE")
+				attr_f.write("%s\t%s\t%s\n" %(my_acc, tag.text, val.text))
 			return 1
-		return -1
-	except URLError as urlerr:
-		print("URL error")
 		return -1
 	except:
 		print("Unexpected error:", sys.exc_info()[0])
