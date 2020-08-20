@@ -1,6 +1,7 @@
 # Do this with ENA data
 
-
+# TODO - tidy up run/sample/experiment --> remove repeated code
+#
 # for a given SRR (run),
 #   - grab all SRS
 #   - grab all SRX
@@ -15,6 +16,7 @@ import time
 
 
 missing_acc = set()
+list_runs = set()
 list_samples = set()
 list_experiments = set()
 
@@ -75,12 +77,6 @@ def parse_obj(my_acc, acc_type, obj_f, attr_f):
 		return -1
 
 
-#setup
-idx = sys.argv[1].zfill(3)
-with open("data/rnaseq_runs_split%s" %idx, 'r') as f:
-	list_runs = [run.rstrip("\n") for run in f]
-
-
 def parse_write(acc_type, acc_list):
 	obj_f = open("data/sra_out/%s_info_%s.tsv" %(acc_type.lower(), idx), 'w')
 	attr_f = open("data/sra_out/%s_attr_%s.tsv" %(acc_type.lower(), idx), 'w')
@@ -92,11 +88,39 @@ def parse_write(acc_type, acc_list):
 	attr_f.close()
 	obj_f.close()
 
+#setup
+idx = sys.argv[1].zfill(3)
+id_type = sys.argv[2]
+
+if id_type == "run":
+	with open("data/missing_runs_to_download.csv",'r') as f:
+	#with open("data/rnaseq_runs_list/rnaseq_runs_split%s" %idx, 'r') as f:
+		list_runs = [run.rstrip("\n") for run in f]
+	parse_write("RUN", list_runs)
+
+elif id_type=="sample":
+	with open("data/missing_samples_to_download.csv",'r') as f:
+	#with open("data/rnaseq_runs_list/rnaseq_samples_split%s" %idx, 'r') as f:
+		for sample in f:
+			list_samples.add(sample.rstrip("\n"))
+
+elif id_type=="experiment":
+	with open("data/missing_experiments_to_download.csv",'r') as f:
+	#with open("data/rnaseq_runs_list/rnaseq_experiments_split%s" %idx, 'r') as f:
+		for experiment in f:
+			list_experiments.add(experiment.rstrip("\n"))
+
+else:
+	print("please specify id type as run, sample, or experiment")
+	exit()
+
 start_time = time.time()
 
-parse_write("RUN", list_runs)
-parse_write("SAMPLE", list_samples)
-parse_write("EXPERIMENT", list_experiments)
+if len(list_samples) != 0:
+	parse_write("SAMPLE", list_samples)
+
+if len(list_experiments) != 0:
+	parse_write("EXPERIMENT", list_experiments)
 
 # write out missing accessions
 with open("data/sra_out/missing_acc_%s.tsv" %(idx), 'w') as f:
