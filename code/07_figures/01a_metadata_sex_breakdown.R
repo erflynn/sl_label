@@ -442,6 +442,93 @@ counts_sample_table %>%
   mutate(num_present=num_samples-unlabeled) %>%
   select(-num_samples) 
 
+
+# ---- Look at pooled/mixed sex samples ----- #
+
+ggplot(comb_metadata %>% 
+         filter(metadata_sex != "unknown") %>%
+         mutate(metadata_sex=fct_recode(metadata_sex, "pooled"="mixed")) %>%
+         rename(`metadata sex`=metadata_sex), 
+       aes(x=p_male, col=`metadata sex`))+
+  geom_density()+
+  facet_grid(data_type~organism)+
+  theme_bw()+
+  scale_color_manual(values=my.cols3)+
+  xlab("P(male)")
+ggsave("figures/paper_figs/mixed_sex_dist.png")
+
+comb_metadata %>%
+  filter(!is.na(p_male) & metadata_sex!="unknown") %>%
+  mutate(lab=case_when(
+    p_male > 0.3 & p_male < 0.7 ~ "ambiguous",
+    p_male <= 0.3 ~ "female",
+    p_male >= 0.7 ~ "male")) %>%
+  group_by(organism, data_type, metadata_sex,  lab) %>%
+  count() %>%
+  ungroup() %>%
+  pivot_wider(names_from=lab, values_from=n) %>%
+  group_by(organism, data_type, metadata_sex) %>%
+  mutate(tot=ambiguous+female+male) %>%
+  mutate(across(ambiguous:male, ~./tot)) %>%
+  ungroup() %>%
+  group_by(organism, data_type) %>%
+  mutate(n=sum(tot), frac_tot=tot/n) 
+# // TODO - write this out
+
+
+# --- Klinefelter's studies ---- #
+klin_study <- comb_metadata %>% filter(str_detect(study_acc, "SRP117733"))
+klin_study2 <- comb_metadata %>% filter(str_detect(study_acc, "GSE42331"))
+
+
+klin_study %>%
+  ggplot(aes(x=p_male))+geom_histogram()
+klin_study %>%
+  select(p_male, sample_acc) %>%
+  arrange(p_male)
+
+metadat <- read_csv("data/01_metadata/human_rnaseq_sample_metadata.csv", 
+                    col_types=paste(rep("c", 11), collapse=""))
+metadat2 <- read_csv("data/01_metadata/human_metadata.csv", 
+                    col_types=paste(rep("c", 13), collapse=""))
+klin_w_meta <- metadat %>% select(acc, title) %>% 
+  inner_join(klin_study %>% select(sample_acc, p_male), 
+             by=c("acc"="sample_acc")) %>%
+  mutate(category=case_when(
+    str_detect(title,"aKSL") ~ "Klin-like",
+    str_detect(title, "aKS") ~ "Klin",
+    str_detect(title, "pNorm") ~ "pre-pub norm",
+    str_detect(title, "pKS") ~ "pre-pub Klin",
+    str_detect(title, "aSCO") ~ "sertoli",
+    str_detect(title, "aNorm") ~ "spermat"
+  ))
+
+klin_w_meta2 <- metadat2 %>% select(acc, title) %>% 
+  inner_join(klin_study2 %>% select(sample_acc, p_male), 
+             by=c("acc"="sample_acc")) %>%
+  mutate(category=case_when(
+    str_detect(title, "KS") ~ "KS",
+    str_detect(title, "female") ~ "female",
+    str_detect(title, "male") ~ "male"
+  ))
+
+ggplot(klin_w_meta, aes(y=category, x=p_male))+
+  geom_point()
+# aKS --> adult Klinefelter
+# aKSL --> klinefelter like
+# aSCO --> sertoli
+# aNorm --> sperm
+# pKS --> prepuberty Klin
+# pNorm --> prepuberty norm
+
+# concern: are we doing a bad job with prepuberty?
+
+ggplot(klin_w_meta2, aes( x=p_male))+
+  geom_histogram() +
+  theme_bw() + 
+  facet_grid(category~.)# this looks more reasonable but still not happy w
+# ---------#
+       
 # # // TODO: stop hard-coding
 # mat1 <- matrix(c(233526,96982,195258, 34531), byrow=TRUE, nrow=2)
 # mat2 <- matrix(c(83926 ,39353, 298072,61070), byrow=TRUE, nrow=2)

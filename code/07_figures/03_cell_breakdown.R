@@ -10,7 +10,7 @@
 # TODOs:
 # - add a figure illustrating sex breakdown separated by tissue
 # - cell line cluster densities
-# - check on mouse results - are they ok?
+# - check on mouse results - are they ok? FIX 
 # - extract addtl info on # reports from cellosaurus...
 # - divide this file into multiple!
 
@@ -28,7 +28,7 @@ my.cols5 <- c(my.l[3], my.l[2], my.l[4], my.l[5], my.l[8])
 my.cols6 <- c(my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
 # ------- #
 
-comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
+comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv",col_types="cccccccdld")
 
 
 # --- CELL LINE LABELS --- #
@@ -45,6 +45,7 @@ cl_lab_unique <- bind_rows(compendia_cl,
                            m_compendia_cl) %>% unique() # 63843
 
 # ---- SAMPLE SOURCE TYPE ---- #
+options(stringsAsFactors=FALSE)
 sample_metadata <- read.csv("data/01_metadata/human_metadata.csv")
 rnaseq_sample_metadata <- read.csv("data/01_metadata/human_rnaseq_sample_metadata.csv")
 m_sample_metadata <- read.csv("data/01_metadata/mouse_metadata.csv")
@@ -77,14 +78,72 @@ mu_s2 <- mu_s %>% mutate(source_type=case_when(
   str_detect(str, "cell line") ~ "unnamed_cl",
   str_detect(str, "cell|culture|passage")  ~ "other",
   is.na(cl_line) | cl_line %in% c("", " ", "--") ~ "tissue",
+  
+  # // TODO - fix this for mouse -- much of this is the type "c57bl/6, b6, etc"
   TRUE ~ "other"
 ))
+
+mu_s2 %>% filter(source_type=="other") %>% sample_n(10) %>%
+  select(cl_line)
 
 table(mu_s2$source_type)
 
 # Table (1): sample source type
 stopifnot(nrow(comb_metadata)==nrow(mu_s2))
 mu_s2 %>% write_csv("data/sample_source_type.csv")
+
+# Figure (A): density
+comb_metadata_w_src <- comb_metadata %>% 
+  inner_join(mu_s2 %>% 
+               select(acc, source_type), by=c("sample_acc"="acc"))
+
+tissue_data <- comb_metadata_w_src %>%
+  filter(source_type == "tissue" & !is.na(p_male))
+
+stopifnot(nrow(comb_metadata_w_src)==nrow(comb_metadata))
+
+ggplot(comb_metadata_w_src %>% 
+         filter(source_type %in% c("named_cl",
+                                   "unnamed_cl","tissue","primary_cells",
+                                   "stem_cell", "cancer")) %>%
+         mutate(source_type=fct_recode(source_type, "cell line"="named_cl", 
+                                       "primary cells"="primary_cells",
+                                       "stem cells"="stem_cell",
+                                       "cancer cells"="cancer")) %>%
+         mutate(source_type=fct_collapse(source_type, "cell line"=c("cell line", "unnamed_cl"))) %>%
+         rename("sample source"=source_type) %>%
+         unite(col="data_src", c("organism", "data_type"), sep=" - "), 
+       aes(x=p_male, col=`sample source`)) +
+  geom_density()+
+  theme_bw()+
+  facet_grid(metadata_sex~data_src, scales="free")+
+  xlab("P(male)")
+ggsave("figures/paper_figs/cl_tiss_density.png")
+
+counts_by_sample_src <- comb_metadata_w_src %>% 
+  group_by(organism, data_type, source_type) %>%
+  count() %>%
+  pivot_wider(names_from=source_type, values_from=n) %>%
+  select(organism, data_type, tissue, named_cl, unnamed_cl, primary_cells, stem_cell, cancer, xenograft, tissue) %>%
+  rename("cell line (named)"=named_cl,
+         "cell line (unnamed)"=unnamed_cl,
+         "cancer cells"=cancer)
+
+counts_by_sample_src %>% write_csv("tables/counts_by_sample_src.csv")
+
+
+
+# mu_s2 %>% 
+#   left_join(comb_metadata_w_src %>% 
+#               select(sample_acc, organism, 
+#                      data_type, metadata_sex, p_male), by=c("acc"="sample_acc")) %>%
+#   filter(source_type=="primary_cells", 
+#          organism=="mouse", 
+#          p_male > 0.5, p_male < 0.7, 
+#          data_type=="rnaseq") %>% 
+#   select(acc, part, data_type, metadata_sex, p_male) %>%
+#   sample_n(50)
+
 
 mu_s3 <- mu_s2 %>% 
   select(acc, source_type, cl_line, accession) %>%
@@ -261,7 +320,7 @@ stopifnot(length(unique(samples_cl_sl$sample_acc))==nrow(samples_cl_sl))
 
 # Table (2) - samples mapped to cell lines with sex labels
 samples_cl_sl %>% write_csv("data/cl_sex_mapped.csv")
-#samples_cl_sl <- read_csv("data/cl_sex_mapped.csv")
+samples_cl_sl <- read_csv("data/cl_sex_mapped.csv")
 
 cl_expr <- samples_cl_sl %>% 
   filter(cl_annot_sex %in% c("female", "male") & !is.na(expr_sex)) %>%
@@ -734,6 +793,14 @@ study_grp %>%
         axis.text.y = element_blank())+
   facet_grid(switching_category ~ dip_pass, scales="free_y")
 
-####
+#### - mislabeled f-->m
+
+mislab <-samples_cl_sl %>% filter(cl_annot_sex=="female", p_male > 0.9, cl_name!="huvec") %>% 
+  arrange(cl_allele_sex, desc(p_male))%>% 
+  select(-source_type, -platform, -metadata_sex, -expr_sex, -cl_annot_sex) # 589
+mislab %>% group_by(cl_acc) %>% count() %>% arrange(desc(n))
+
+# cvcl_l909 -- likely wrong
+# try to see if these look different
 
 #### empirical distribution clustering 

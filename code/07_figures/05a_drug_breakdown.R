@@ -1,10 +1,9 @@
-# 05_drug_breakdown.R
+# 05a_drug_breakdown.R
 # E Flynn
 # Last updated 07/29/2020
 #
 # Look at the breakdown of drug data by sex. 
 # TODO:
-# - update so has the full set of studies! (including RNA-seq)
 # - filter out cell line data
 # - move ATC classes data + all other dependent data to this repo!
 # - add in sample level data?
@@ -12,6 +11,8 @@
 
 require('tidyverse')
 require('scales')
+require('ggrepel')
+
 
 #  --- set up color scheme --- #
 library(RColorBrewer)
@@ -407,10 +408,106 @@ count_drugs <- study_types %>%
   ungroup() %>%
   mutate(frac=n/sum)
 
-# ------ LOOK AT CANCER DRUGS ------ #
-cancer_drugs <- study_db2 %>% filter(class=="L", organism=="human") 
+# ------ plot sex diff in drugs ------ #
+all_no_cl <- study_db2 %>% 
+  inner_join(stud_tiss2 %>% 
+               select(study_acc, tissue, cancer, cell_line, tot )) %>%
+  filter(tissue+cancer > 0.5)
 
-sex_breakdown_cancer_drugs <- cancer_drugs %>% 
+sex_breakdown_drugs <- all_no_cl %>% 
+  select(-tissue, -cell_line, -tot, -cancer) %>%
+  group_by(organism,  dbID, class, name, study_sex) %>%
+  mutate(study_acc=paste(study_acc, collapse = ";")) %>%
+  select(-num_tot, -num_f, -num_m, -num_present, -data_type) %>%
+  unique() %>%
+  ungroup() %>%
+  pivot_wider(id_cols=c(organism, name, dbID, class), 
+              names_from="study_sex", values_from="study_acc") %>%
+  arrange(organism, name) 
+
+sex_breakdown_drugs2 <- sex_breakdown_drugs %>%
+  group_by(organism, name, class) %>%
+  mutate(across(c(`mixed sex`, `male only`, `female only`), 
+                ~ifelse(is.na(.), 0, length(str_split(., ";")[[1]])))) %>%
+  mutate(num_studies=`mixed sex`+`female only`+`male only`) %>%
+  select(-unknown) %>%
+  mutate(across(c(`mixed sex`, `female only`, `male only`), ~./num_studies))
+sex_breakdown_drugs2 %>%
+  mutate(drug_name=case_when(
+    `female only` > 0.66 & `male only` < 0.33 & num_studies >= 3 ~name,
+    `female only` < 0.33 & `male only` > 0.66 & num_studies >= 3 ~ name,
+    TRUE ~ ""))  %>%
+  ggplot(aes(x=`female only`, y=`male only`, col=class))+
+  geom_point(alpha=0.5, aes(size=num_studies), position=position_jitter())+
+  geom_label_repel(size=2, fill="white", aes(label=drug_name))+
+  theme_bw()+
+  facet_grid(.~organism)
+ggsave("figures/paper_figs/sex_breakdown_drugs.png")
+
+# ------ LOOK AT CANCER DRUGS ------ #
+cancer_drugs <- study_db2 %>% filter(class=="L") 
+
+
+sample_source <- read_csv("data/sample_source_type.csv") %>%
+  select(acc, source_type)
+
+stud_tiss <- comb_metadata %>% select(sample_acc, study_acc) %>%
+  inner_join(sample_source, by=c("sample_acc"="acc")) %>%
+  separate_rows(study_acc, sep=";") %>%
+  mutate(source_type=fct_collapse(source_type,
+    "cell_line"=c("unnamed_cl", "named_cl"),
+    "other"=c("xenograft", "other")
+  )) %>%
+  group_by(study_acc, source_type) %>% 
+  count() 
+
+stud_tiss2 <- stud_tiss %>%
+  pivot_wider(names_from=source_type, values_from=n, values_fill=0) %>%
+  mutate(tot=tissue+primary_cells+cell_line+cancer+other+stem_cell) %>%
+  mutate(across(tissue:stem_cell, ~./tot))
+
+# ---- GRAB MIXED SEX PRIMARY AND STEM CELLS ---- #
+by_study %>% filter(label_type=="expression") %>%
+                          select(study_acc, organism, data_type, study_sex, num_f, num_m) %>% 
+  filter(study_sex=="mixed sex" ) %>%
+  semi_join(stud_tiss2 %>% filter(primary_cells==1 & tot >= 8)) %>%
+  arrange(desc(num_f+num_m))
+
+
+by_study %>% filter(label_type=="expression") %>%
+  select(study_acc, organism, data_type, study_sex, num_f, num_m) %>% 
+  filter(study_sex=="mixed sex" ) %>%
+  semi_join(stud_tiss2 %>% filter(stem_cell==1 & tot >= 8)) %>%
+  arrange(desc(num_f+num_m))
+# ----------------------------------------------------- #
+  
+stud_tiss %>% group_by(source_type) %>% summarize(sum(n))
+cc_no_cl <- cancer_drugs %>% 
+  inner_join(stud_tiss2 %>% 
+               select(study_acc, tissue, cancer, cell_line, tot )) %>%
+  filter(tissue+cancer > 0.5)
+
+cc_no_cl %>% filter(name=="Fulvestrant", organism=="human", data_type=="microarray") %>% 
+                    select(-dbID, -ATC, -class, -ATC_class)
+# GSE27444 - MCF7
+# GSE33658 - patients
+# GSE48905 - patients
+
+cc_no_cl %>% filter(name=="Docetaxel", organism=="human", data_type=="microarray") %>% 
+  select(-dbID, -ATC, -class, -ATC_class)
+# all of these are looking at breast cancer
+
+cc_no_cl %>% filter(name=="Decitabine", organism=="human") %>% 
+  select(-dbID, -ATC, -class, -ATC_class)
+# GSE19610 (m) - MDS stem cells
+# GSE44857 (m) - AML xenografts 
+# GSE55410 - ovarian
+# SRP114518 - ovarian
+# SRP046233 (m) - 14 CMML patients
+# remaining - cell lines :/ 
+
+sex_breakdown_cancer_drugs <- cc_no_cl %>% 
+  select(-tissue, -cell_line, -tot, -cancer) %>%
   group_by(organism, data_type, dbID, name, study_sex) %>%
   mutate(study_acc=paste(study_acc, collapse = ";")) %>%
   select(-num_tot, -num_f, -num_m, -num_present) %>%
@@ -419,6 +516,7 @@ sex_breakdown_cancer_drugs <- cancer_drugs %>%
   pivot_wider(id_cols=c(organism, data_type, name, dbID), 
               names_from="study_sex", values_from="study_acc") %>%
   arrange(organism, data_type, name) 
+
 sex_breakdown_cancer_drugs2 <- sex_breakdown_cancer_drugs %>%
   group_by(organism, data_type, name) %>%
   mutate(across(c(`mixed sex`, `male only`, `female only`), ~ifelse(is.na(.), 0, length(str_split(., ";")[[1]])))) %>%
@@ -432,23 +530,92 @@ sex_breakdown_cancer_drugs2 <- sex_breakdown_cancer_drugs %>%
   )) %>%
   ungroup()
 
-sex_breakdown_cancer_drugs2 %>% 
-  group_by(study_types) %>% 
-  count()
+sex_breakdown_cancer_drugs2 %>% arrange(desc(`female only`))
 
-sex_breakdown_cancer_drugs2 %>% 
-  mutate(tot=`male only`+`female only`+`mixed sex`) %>% 
-  arrange(desc(tot))
-cancer_drugs %>% 
-  filter(organism=="human", data_type =="microarray") %>% 
-  select(study_acc, study_sex)  %>% unique() %>%
-  group_by(study_sex) %>% count()
+cancer_drugs3 <- sex_breakdown_cancer_drugs2 %>%
+  select(-unknown, -study_types) %>%
+  #filter(data_type=="microarray", organism=="mouse") %>%
+  mutate(num_studies=`mixed sex`+`female only`+`male only`) %>%
+  mutate(across(`mixed sex`:`male only`, ~./num_studies)) %>%
+  mutate(drug_name=case_when(
+    `female only` > 0.5 & `male only` < 0.5 & num_studies >= 2 ~name,
+    `female only` < 0.5 & `male only` > 0.5 & num_studies >= 2 ~ name,
+    TRUE ~ "")) 
+cancer_drugs3 %>%
+  ggplot(aes(x=`female only`, y=`male only`, 
+              label=drug_name))+
+    geom_point(alpha=0.5, aes(size=num_studies))+
+  geom_label_repel(size=2, fill="white")+
+  theme_bw()+
+  facet_grid(organism ~ data_type)
 
-# gotten count data, want more of a narrative
-# REALLY NEED TO FILTER OUT CELL LINES
+cancer_type <- read_tsv("tables/cancer_type_annot.txt")
+cancer_types2 <- cancer_type %>%
+  mutate(cancer_type2=case_when(
+    cancer_type=="breast" ~ "breast cancer",
+    cancer_type=="prostate" ~ "prostate cancer",
+    cancer_type=="ovarian" ~ "ovarian cancer",
+
+    str_detect(cancer_type, "breast") &
+      str_detect(cancer_type, "ovarian") & 
+      str_detect(cancer_type, "prostate") ~ "includes breast,ovarian,prostate",
+    str_detect(cancer_type, "ovarian") & 
+      str_detect(cancer_type, "prostate") ~ "includes ovarian,prostate",
+    str_detect(cancer_type, "breast") & 
+      str_detect(cancer_type, "prostate") ~ "includes breast,prostate",
+    str_detect(cancer_type, "breast") & 
+      str_detect(cancer_type, "ovarian") ~ "includes breast,ovarian",
+    str_detect(cancer_type, "breast") ~ "includes breast",
+    
+    str_detect(cancer_type, "prostate") ~ "includes prostate",
+    str_detect(cancer_type, "ovarian") ~ "includes ovarian",
+    TRUE ~ "other"
+    ))
+
+cancer_types2 %>% 
+  group_by(cancer_type2) %>% count() %>% 
+  arrange(desc(n))
+
+cancer_drugs4 <- cancer_drugs3 %>% 
+  left_join(cancer_types2 %>% select(-cancer_type)) %>%
+  rename(cancer_type=cancer_type2) %>%
+  mutate(cancer_type=ifelse(is.na(cancer_type), "not labeled", cancer_type))
+cancer_drugs4 %>%  filter(drug_name!="") %>%
+  arrange(organism, data_type, desc(`female only`), desc(`num_studies`)) %>%
+  select(-`mixed sex`, -drug_name) %>%
+  write_csv("tables/sex_breakdown_cancer_drugs.csv")
+
+cancer_drugs4 %>%
+  rename(`number of studies`=`num_studies`,
+         `cancer type`=`cancer_type`) %>%
+  ggplot(aes(x=`female only`, y=`male only`, 
+             label=drug_name))+
+  geom_point(alpha=0.7, aes(size=`number of studies`, col=`cancer type`))+
+  geom_label_repel(size=2, fill="white", aes(col=`cancer type`))+
+  theme_bw()+
+  scale_color_manual(values=c("purple", "pink", "red", "green", 
+                              "orange", "gray","black", "blue"))+
+  facet_grid(organism ~ data_type)
+
+cancer_drugs4 %>%   
+  filter(drug_name!="") %>%
+  arrange(organism, data_type, desc(`female only`), desc(`num_studies`)) %>%
+  select(-`mixed sex`, -drug_name) %>%
+  View()
 
 # ------ LOOK AT NEURO DRUGS ------- #
 neuro_drugs <- study_db2 %>% filter(class=="N")
+
+neuro_drugs %>%
+  group_by(organism, data_type, dbID, name, study_sex) %>%
+  count() %>%
+  pivot_wider(names_from="study_sex", values_from="n", values_fill=0) %>%
+  select(-unknown) %>%
+  filter(organism=="mouse") %>%
+  mutate(num_studies=`female only`+`male only`+`mixed sex`) %>%
+  mutate(across(`female only`:`mixed sex`, ~./num_studies)) %>%
+  arrange(data_type, desc(num_studies), desc(`male only`), desc(`female only`)) %>%
+  write_csv("tables/mouse_neuro_drugs.csv")
 
 sex_breakdown_neuro_drugs <- neuro_drugs %>% 
   group_by(organism, data_type, dbID, name, study_sex) %>%
@@ -459,6 +626,7 @@ sex_breakdown_neuro_drugs <- neuro_drugs %>%
   pivot_wider(id_cols=c(organism, data_type, name, dbID), 
               names_from="study_sex", values_from="study_acc") %>%
   arrange(organism, data_type, name) 
+
 
 #  mouse nervous system drugs and associated studies
 sex_breakdown_neuro_drugs %>% write_csv("tables/sex_breakdown_neuro_drugs_by_drug.csv")
@@ -486,3 +654,6 @@ neuro_drugs_count <- sex_breakdown_neuro_drugs2 %>%
 neuro_drugs_count
 m_only_mouse <-sex_breakdown_neuro_drugs2 %>% 
   filter(organism=="mouse" & study_types == "single sex - m") 
+
+
+
