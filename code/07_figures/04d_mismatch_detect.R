@@ -5,6 +5,7 @@
 # 
 # TODO:
 # - sensitivity to parameters: scale, noise detection, cutoff
+# - try MCMC?
 
 require('tidyverse')
 require('mclust')
