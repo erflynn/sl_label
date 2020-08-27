@@ -1,4 +1,12 @@
-
+# 04c_hc_compare.R
+# E Flynn
+# 08/27/2020
+#
+# TODO:
+# - how did I get this data??
+# - where is the RNA-seq?
+# - THIS SHOULD BE A SUBSET!! of 4d (TODO - reorder files)
+# - what is the fraction that agrees between each of the methods?
 require('tidyverse')
 
 # TODO - how did I get these data?
@@ -35,7 +43,25 @@ compare_df2 <- compare_df %>%
     toker_sex == text_sex & massir_sex != text_sex ~ 0,
     toker_sex != text_sex & massir_sex == text_sex ~ 0
   ))
+
+compare_df2 %>% 
+  left_join(comb_metadata %>% dplyr::select(sample_acc, study_acc)) %>%
+  distinct(study_acc) %>%
+  separate_rows(study_5acc, sep=";") %>%
+  distinct(study_acc) %>%
+  nrow()
   
+matched_comp <- compare_df2 %>% 
+  filter(compare_col %in% c(1,2))
+
+matched_comp %>% 
+  left_join(comb_metadata %>% dplyr::select(sample_acc, study_acc)) %>%
+  distinct(study_acc) %>%
+  separate_rows(study_acc, sep=";") %>%
+  distinct(study_acc) %>%
+  nrow()
+
+
 compare_df2 %>%
   mutate(expr_sex=ifelse(p_male < 0.7 & p_male > 0.3, "unknown", expr_sex)) 
 
@@ -45,7 +71,7 @@ matching <- compare_df2 %>% filter(compare_col %in% c(1,2))
 summarizeAcc <- function(df, x){
   df %>%
     mutate(threshold=x) %>%
-    select(sample_acc, organism, source_type, text_sex, expr_sex, p_male, compare_col, threshold) %>%
+    dplyr::select(sample_acc, organism, source_type, text_sex, expr_sex, p_male, compare_col, threshold) %>%
     mutate(expr_sex=ifelse(p_male < threshold & p_male > 1-threshold, "unknown", expr_sex)) %>%
     mutate(match=case_when(
       expr_sex=="unknown" ~ 0,
@@ -58,7 +84,8 @@ summarizeAcc <- function(df, x){
     mutate(across(`match_type-1`:match_type1, ~./nsamples))
 }
   
-df <- do.call(rbind, lapply(seq(0.6,0.9, 0.1), function(x) summarizeAcc(matching, x))) %>%
+df <- do.call(rbind, lapply(seq(0.6,0.9, 0.1), function(x) 
+  summarizeAcc(matching, x))) %>%
   mutate(frac_unlab=match_type0,
          frac_correct=abs(match_type1-`match_type-1`)/(match_type1+`match_type-1`))
 df %>% filter(threshold==0.7) # 90.9% (5.15% unlab) for mouse, 99.5% (3.17% unlab) for human at threshold 0.7
@@ -66,8 +93,12 @@ df %>% filter(threshold==0.7) # 90.9% (5.15% unlab) for mouse, 99.5% (3.17% unla
 # how many mismatch across all? at each threshold?
 mismatch <- compare_df2 %>% filter(compare_col %in% c(-1,-2))
 
-df2 <- do.call(rbind, lapply(seq(0.6,0.9, 0.1), function(x) summarizeAcc(mismatch, x))) 
-df3 <- do.call(rbind, lapply(seq(0.6,0.9, 0.1), function(x) summarizeAcc(compare_df2, x))) %>%
+
+
+df2 <- do.call(rbind, lapply(seq(0.6,0.9, 0.1), function(x) 
+  summarizeAcc(mismatch, x))) 
+df3 <- do.call(rbind, lapply(seq(0.6,0.9, 0.1), function(x) 
+  summarizeAcc(compare_df2, x))) %>%
   mutate(num_unlab=match_type0*nsamples) %>%
   group_by(organism, threshold) %>%
   summarize(num_unlab=sum(num_unlab), n=sum(nsamples)) %>%
@@ -89,15 +120,55 @@ mismatch_df2 %>%
   summarize(num_mismatch=sum(num_mismatch), n=sum(n)) %>%
   mutate(frac_mismatch=num_mismatch/n)
 
-# summarize = all
-
-mismatch_df2 %>% 
+# -- make a supplementary table with these counts -- #
+summary_hc_samples <- mismatch_df2 %>% 
   ungroup() %>%
-  mutate(cl_line=(source_type %in% c("unnamed_cl", "named_cl"))) %>%
-  group_by(organism, threshold, cl_line) %>%
+  mutate(cell_line=(source_type %in% c("unnamed_cl", "named_cl"))) %>%
+  group_by(organism, threshold, cell_line) %>%
   summarize(num_mismatch=sum(num_mismatch), n=sum(n)) %>%
   mutate(frac_mismatch=num_mismatch/n) %>%
-  arrange(cl_line, organism, threshold)
+  arrange(cell_line,threshold, organism) %>%
+  rename(num_samples=n)
 
-# summarize = non-cl
+study_cts_hc <- do.call(rbind, lapply(c(0.6, 0.7, 0.8, 0.9), function(threshold) {
+  compare_df2 %>% 
+  left_join(comb_metadata %>% dplyr::select(sample_acc, study_acc)) %>%
+  separate_rows(study_acc, sep=";") %>%
+  mutate(cell_line=(source_type %in% c("unnamed_cl", "named_cl"))) %>%
+  mutate(expr_sex=ifelse(p_male < threshold & p_male > (1-threshold), "unknown", expr_sex)) %>%
+  mutate(match=case_when(
+    expr_sex=="unknown" ~ 0,
+    expr_sex==text_sex ~ 1,
+    expr_sex!=text_sex ~ -1)) %>%
+  mutate(compare2=case_when(
+    match==-1 & compare_col %in% c(-1, -2) ~ -1,
+    match==1 & compare_col %in% c(1, 2) ~ 1,
+    TRUE ~ 0,
+  )) %>%
+  group_by(organism, cell_line, study_acc) %>%
+  summarize(unk=sum(compare2==0), 
+            match=sum(compare2==1), 
+            mismatch=sum(compare2==-1),
+            tot=n()) %>%
+  summarize(mismatch=sum(mismatch>0), num_studies=n()) %>%
+  mutate(mismatch=mismatch/num_studies) %>%
+  filter(!cell_line) %>%
+  dplyr::select(-cell_line) %>%
+    mutate(threshold=threshold)
+}))
+
+summary_hc <- summary_hc_samples %>% 
+  filter(!cell_line) %>% 
+  dplyr::select(-cell_line, -num_mismatch) %>%
+  rename(frac_samples_mismatch=frac_mismatch) %>%
+  left_join(study_cts_hc %>% 
+              rename(frac_studies_mismatch=mismatch), 
+            by=c("organism", "threshold")) %>%
+  dplyr::select(organism, threshold, num_samples, num_studies, frac_samples_mismatch, frac_studies_mismatch)
+
+summary_hc %>% 
+  arrange(organism) %>%
+  mutate(across(contains("frac"), ~signif(.,3))) %>%
+  write_csv("tables/supp_misannot_hc.csv")
+
 

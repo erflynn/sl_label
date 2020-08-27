@@ -4,7 +4,11 @@
 # Code for mismatch detection
 # 
 # TODO:
-# - sensitivity to parameters: scale, noise detection, cutoff
+# - divide into files!
+# - get study estimates for sex breakdown version
+# [- update sex breakdown table to include pval??]
+# - update dist table to include threshold
+# - sensitivity to parameters: scale, noise detection
 # - try MCMC?
 
 require('tidyverse')
@@ -115,6 +119,8 @@ countFracMatch <- function(dat){
 }
 fit4 %>% countFracMatch()
 
+
+
 mismatch <- fit4 %>% filter(match=="mismatch") %>% distinct(study_acc)
 
 
@@ -160,13 +166,13 @@ f_samples <- dat_src %>%
   filter(!is.na(p_male) & metadata_sex!="unknown")
 
 
-matchBreakdown <- function(dat){
+matchBreakdown <- function(dat, threshold=0.7){
   dat %>%
     mutate(match=case_when(
-      p_male < 0.3 & metadata_sex=="female" ~ "match",
-      p_male > 0.7 & metadata_sex=="female" ~ "mismatch",
-      p_male > 0.7 & metadata_sex=="male" ~ "match",
-      p_male < 0.3 & metadata_sex=="male" ~ "mismatch",    
+      p_male < 1-threshold & metadata_sex=="female" ~ "match",
+      p_male > threshold & metadata_sex=="female" ~ "mismatch",
+      p_male > threshold & metadata_sex=="male" ~ "match",
+      p_male < 1-threshold & metadata_sex=="male" ~ "mismatch",    
       TRUE ~ "unclear"
     )) %>%
     countFracMatch()
@@ -176,6 +182,70 @@ m_samples %>% matchBreakdown()
 f_samples %>% matchBreakdown()
 mixed_sex_samples %>% matchBreakdown()
 
+dat_breakdown <- do.call(rbind, 
+                         lapply(seq(0.6, 0.9, 0.1), function(threshold){
+  m_samples %>% bind_rows(f_samples) %>% 
+    matchBreakdown(threshold) %>% 
+    mutate(sex="single sex") %>%
+    bind_rows(mixed_sex_samples %>% 
+                matchBreakdown(threshold) %>% mutate(sex = "mixed sex")) %>%
+    mutate(threshold=threshold)
+})) %>% as_tibble()
+
+
+
+# plot the breakdown.. not sure this is helpful?
+dat_breakdown %>% 
+  filter(!cell_line) %>%
+  dplyr::select(-cell_line) %>%
+  pivot_longer(c(match, mismatch, unclear), names_to="type", values_to="frac") %>%
+  filter(type=="mismatch")%>%
+  rename(`study sex`=sex) %>%
+  ggplot(aes(x=threshold, y=frac, fill=`study sex`))+
+  geom_bar(stat="identity", position="dodge")+
+  facet_grid( data_type ~ organism) +
+  theme_bw()+
+  ylab("mismatch fraction")+
+  xlab("probability threshold")
+ggsave("figures/paper_figs/study_sex_mismatch_fraction.png")
+
+dat_breakdown2 <- dat_breakdown %>%
+  filter(!cell_line) %>%
+  mutate(mismatch_ct=mismatch*tot) %>%
+  mutate(match_ct=match*tot) %>%
+  dplyr::select(-match, -mismatch, -unclear, -cell_line) %>%
+  dplyr::select(-tot, everything(), tot) %>%
+  arrange(threshold, organism, data_type, sex) 
+
+grps<- dat_breakdown2 %>% 
+  group_split(organism, threshold, data_type) 
+
+
+pvals <- do.call(rbind, lapply(grps, function(x){
+  mat <- matrix(c(x$mismatch_ct, x$match_ct), ncol=2, byrow=FALSE)
+  rownames(mat) <- x$sex
+  colnames(mat) <- c("mismatch", "match")
+  chisq.res <- chisq.test(mat)
+  tibble("organism"=x$organism[[1]], 
+         "data_type"=x$data_type[[1]],
+         "threshold"=x$threshold[[1]],
+         "larger"=rownames(mat)[(chisq.res$residuals[,"mismatch"] > 0)],
+         "p"=chisq.res$p.value)
+}))
+pvals %>% 
+  arrange(threshold, organism, data_type) %>%
+  filter(data_type!="rnaseq")
+
+# table 6B - characterization of mixed sex 
+#  organism, data_type, threshold, study_sex, num_samples, 
+#    num_studies, frac_samples_mismatch, frac_samples_unlab, 
+#    frac_studies_mismatch
+dat_breakdown %>% filter(!cell_line) %>%  dplyr::select(-cell_line) %>%
+  dplyr::select(organism, data_type, threshold, sex, everything()) %>%
+  arrange(threshold, organism, data_type, sex) %>%
+  rename(num_samples=tot, `study sex`=sex) %>%
+  mutate(across(where(is.numeric), ~ifelse(. < 1000, signif(., 3), .))) %>%
+  write_csv("tables/supp_misannot_sex_breakdown.csv")
 
 # fit the models on the single sex data!
 f_fits2 <- splitEst(f_samples)
@@ -183,3 +253,46 @@ m_fits2 <- splitEst(m_samples)
 f_fits2 %>% clusBreakdown()
 m_fits2 %>% clusBreakdown()
 
+ss_fits <- f_fits2 %>%
+  bind_rows(m_fits2)  %>%
+  mutate(diff_mu=mu2-mu1) %>%
+  mutate(study_sep=(mu1 < 0.5 & mu2 > 0.5 & diff_mu > 0.3)) %>%
+  distinct(study_acc, G, mu1, mu2, study_sep, diff_mu) 
+table((ss_fits %>% filter(G==2) )$study_sep)
+# table 6C
+#  organism, data_type, num_samples, num_studies, frac_mismatched, 
+
+d_sample_cts <- fit4 %>% 
+  countFracMatch() %>% 
+  filter(!cell_line) %>% dplyr::select(-cell_line) %>%
+  rename(num_samples=tot, 
+         samples_match=match,
+         samples_mismatch=mismatch, 
+         samples_unclass=unclassified,
+         samples_unclear=unclear)
+
+study_ct <- fit4 %>% 
+  mutate(cell_line=(source_type %in% c("unnamed_cl", "named_cl"))) %>%
+  filter(!cell_line) %>%
+  group_by(organism,data_type, study_acc) %>%
+  summarize(nmatch=sum(match=="match"), 
+            nmismatch=sum(match=="mismatch"),
+            nunclass=sum(match=="unclassified"),
+            nunclear=sum(match=="unclear"),
+            tot=n())
+study_ct2 <- study_ct %>% 
+  group_by(organism, data_type) %>% 
+  summarize(mismatched=sum(nmismatch>0),
+            matched=sum(nmismatch==0),
+            tot=n()) %>%
+  mutate(across(mismatched:matched, ~./tot))
+
+d_stats_tab <- study_ct2 %>% 
+  rename(num_studies=tot,mismatched_studies=mismatched) %>% 
+  dplyr::select(-matched) %>%
+  left_join(d_sample_cts, by=c("organism", "data_type")) %>%
+  dplyr::select(organism, data_type, num_studies, num_samples, everything())
+
+d_stats_tab %>% 
+  mutate(across(where(is.numeric), ~ifelse(. < 1000, signif(., 3), .))) %>%
+  write_csv("tables/supp_misannot_d.csv")
