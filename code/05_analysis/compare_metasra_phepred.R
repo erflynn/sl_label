@@ -11,7 +11,6 @@ require('recount') ## warning there are multiple recount packages! --> had to re
 ##  ---- phenopredict ---- ##
 phepred <- recount::add_predictions() # this downloads everything. 70,479
 save(phepred, file="data/10_comparison/phepred_data.RData")
-
 phepred_sl <- phepred %>% 
   select(sample_id, reported_sex, predicted_sex) %>%
   mutate(reported_sex=tolower(as.character(reported_sex)))
@@ -291,6 +290,28 @@ comp %>% filter(consensus_meta==exprsex & exprsex != predicted_sex)
 
 # --------- cell line labels ---------- #
 
+sample_src <- read_csv("data/sample_source_type.csv") %>% select(acc,source_type)
+samp_to_runs <- read_csv("data/sra_run_to_sample.csv") # 588295
+run_type <- sample_type_df %>%  # 338842
+  inner_join(samp_to_runs, by=c("sample_accession"="samples")) # 139432
+compare_df <- run_type %>% inner_join(sample_src, by=c("run"="acc"))
+
+compare_df2 <- compare_df %>% 
+  mutate(source_type=case_when(
+    source_type %in% c("unnamed_cl", "named_cl") ~ "cell line",
+    source_type=="primary_cells" ~ "primary cells",
+    source_type=="stem_cell" ~ "stem cells",
+    source_type=="tissue" ~ "tissue",
+    TRUE ~ "other")) %>%
+  mutate(sample_type=ifelse(sample_type=="induced pluripotent stem cell line", "stem cells", sample_type))
+table(compare_df2$sample_type, compare_df2$source_type)
+
+# we are labeling a lot of cell line data as tissue
+# we are labeling a lot of primary cells as tissue
+compare_df2 %>% filter(sample_type=="cell line" & source_type=="tissue") %>%
+  sample_n(50)
+# our error: SRS859083
+
 # Q3: does our group label match theirs for both MetaSRA and phenopredict (e.g. cell line, non-cell line)?
 samp2 <- sample_type_df %>% 
   left_join(samp_to_runs, by=c("sample_accession"="sample")) %>% 
@@ -364,6 +385,7 @@ metadata %>% filter(acc=="ERR2929108") # ours looks better lol
 
 # ------- OTHER ------- #
 
-# what metadata does ARCHS4 have?
+# sample type
+
 
 

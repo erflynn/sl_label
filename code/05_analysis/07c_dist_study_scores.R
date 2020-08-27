@@ -1,10 +1,9 @@
 load("data/summary_files.RData")
 load("data/sample_level_sex.RData" )
 h_summ %>% head()
-h_map %>% head()
 human2 %>% head()
 h_summ2 <- h_summ %>% filter(num_samples >=8)
-
+h_map <- comb_metadata %>% filter(organism=="human") %>% select(study_acc, sample_acc) %>% separate_rows(study_acc, sep=";")
 
 reformSamp <- function(dat){
   dat %>% select(study, num_samples, sex) %>%
@@ -36,11 +35,102 @@ ggplot(f_only %>% semi_join(f_only_stat %>% sample_n(10)), aes(x=pred, y=0))+
 mixed <- h_summ2 %>% 
   filter(labeling_method=="metadata" & sex=="mixed") %>%
   reformSamp()
-mixed_stat <- mixed %>% group_by(study, text_sex) %>% 
+mixed_stat <- mixed %>% 
+  group_by(study, text_sex) %>% 
   dplyr::summarize(mu=mean(pred), sigma=sd(pred)) %>%
   mutate(mu_l=mu-3*sigma, mu_u=mu+3*sigma) %>%
   mutate(mu_2l=mu-2*sigma, mu_2u=mu+2*sigma) %>%
   ungroup()
+
+
+# ------- TRY MCLUST ------ #
+require('mclust')
+
+
+extractFit <- function(fit){
+  G <- fit$G 
+
+  mu <- fit$parameters$mean
+  var <- fit$parameters$variance$sigmasq
+  probs <- fit$z
+  n <- nrow(probs)
+  mu1 <- mu[[1]] ; var1 <- var[[1]]; p1 <- probs[,1]
+  
+  if (G==1){
+    mu2=NA
+    p2=rep(NA, n)
+    var2=NA
+  } else {
+    mu2 <- mu[[2]] ; var2 <- var[[2]]; p2 <- probs[,2]
+    
+  }
+  tibble(class=fit$classification, p1=p1, p2=p2,
+         G=rep(G, n), mu1=rep(mu1, n),
+         mu2=rep(mu2, n), var1=rep(var1, n),
+         var2=rep(var2, n))
+}
+
+study_split <- mixed %>% 
+  select(study, sample, text_sex, pred) %>% 
+  group_split(study) 
+fits <- lapply(study_split, function(x) 
+  {predCol= x %>% select(pred);
+  nnoise=which(predCol>0.4 & predCol < 0.6);
+  if (length(nnoise) < 1){
+    fit=Mclust(predCol, G=1:2, model="V",
+               prior=priorControl(scale=0.15));
+  } else {
+    fit=Mclust(predCol, G=1:2, model="V",
+               initialization= list(noise=nnoise),
+               prior=priorControl(scale=0.15));
+  }
+  df <- cbind(x, extractFit(fit))
+  return(df)})
+fits2 <- do.call(rbind, fits) %>% as_tibble()
+
+fit3 <- fits2 %>% 
+  mutate(diff_mu=mu2-mu1) %>%
+  mutate(study_sep=(mu1 < 0.5 & mu2 > 0.5 & diff_mu > 0.3)) %>%
+  mutate(match=case_when(
+         class==0 ~ "unclassified",
+         (text_sex=="female" & p2 > 0.95) ~ "mismatch",
+         (text_sex=="male" & p1 > 0.95) ~ "mismatch",
+         (text_sex=="male" & p2 > 0.9) ~ "match",
+         (text_sex=="female" & p1 > 0.9) ~ "match",
+         TRUE ~ "unclear"))
+
+nrow(fit3) # 77,966
+fit4 <- fit3 %>% filter(G!=1 & study_sep) # 68,809
+table(fit4$match)/nrow(fit4) # 2.70% mismatch, 2.60% unclass
+mismatch <- fit4 %>% filter(match=="mismatch") %>% distinct(study)
+
+"GSE30101"
+
+fit4 %>% 
+  #mutate(match_sex=paste(text_sex, match)) %>%
+  filter(study %in% (mismatch %>% sample_n(10) %>% pull(study))) %>%
+  ggplot(aes(x=pred, y=text_sex, col=match))+
+  #geom_boxplot(aes(group=match_sex))+
+  geom_point(alpha=0.3, position=position_jitter(0.01))+
+  geom_vline(aes(xintercept=mu1), alpha=0.5)+
+  geom_vline(aes(xintercept=mu2), alpha=0.8)+
+  geom_vline(aes(xintercept=(mu2-1.96*var2)), col="gray", lty=2)+
+  geom_vline(aes(xintercept=(mu2+1.96*var2)), col="gray", lty=2)+
+  geom_vline(aes(xintercept=(mu1-1.96*var1)), col="gray", lty=2)+
+  geom_vline(aes(xintercept=(mu1+1.96*var1)), col="gray", lty=2)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.title=element_blank(),
+        strip.text.y.right = element_text(angle = 0))+
+  scale_color_manual(values=c("dark blue", "red", "gray", "purple"))+
+  facet_grid(study~ .)+
+  ylab("metadata sex")+
+  xlab("P(male)")
+ 
+ggsave("figures/paper_figs/mismatch_detect6.png")
+# stop
+
 mixed_stat2 <- mixed_stat %>%
    pivot_longer(c("mu_2l", "mu_2u"), names_to="stat", values_to="stat_val") %>%
    mutate(stat=paste(stat,text_sex, sep="_"))  %>%
@@ -74,7 +164,7 @@ likely_mislabeled2 <-
   filter(pred < mu_l | pred > mu_u) %>%
   left_join(mixed_stat2 %>% select(study, sex_sep)) %>%
   filter(sex_sep) %>%
-  filter(text_sex!=expr_sex)
+  filter(text_sex!=expr_sex) # 3673, # 4166
 
 # need to have separation between mu_f & mu_m
 ggplot(mixed %>% semi_join(likely_mislabeled %>% select(study) %>% 
@@ -147,14 +237,20 @@ text_pres %>% select(sample, expr_sex, text_sex) %>%
   unique() %>% filter(expr_sex!=text_sex) %>% nrow() # 5858
 # 7.5%
 
+
+text_pres %>% select(sample, expr_sex, text_sex, pred) %>% 
+  unique() %>% filter(expr_sex!=text_sex) %>% filter(pred > 0.7 | pred < 0.3) %>%
+  nrow()
+# 3709/78557 4.72%
+
 text_pres %>% select(sample, expr_sex, text_sex, pred) %>% 
   unique() %>% filter(expr_sex!=text_sex) %>% filter(pred > 0.8 | pred < 0.2) %>%
   nrow()
-
+# 2887/78557 = 3.67%
 
 text_pres %>% select(sample, expr_sex, text_sex, pred) %>% 
   unique() %>% filter(expr_sex!=text_sex) %>% filter(pred > 0.9 | pred < 0.1)
-# 1856
+# 1866 # = 2.38%
 
 
 

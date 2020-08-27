@@ -57,8 +57,8 @@ run_dat <- do.call(rbind, lapply(my_runs,
 run_dat2 <- run_dat %>% as_tibble()
 colnames(run_dat2) <- c("run", "descript", "runs", "samples", "experiments")
 run_mapping <- run_dat2 %>% select(run, samples) 
-
-# one multi-maps --> perhaps skip?
+run_mapping %>% write_csv("../sra_run_to_sample.csv")
+# note: one multi-maps --> perhaps skip?
 run_mapping %>% filter(str_detect(samples, ";"))
 
 # ----- load sample data ------ #
@@ -99,3 +99,9 @@ read_csv("data/01_metadata/combined_human_mouse_meta.csv") %>%
   filter(data_type=="rnaseq") %>%
   group_by(metadata_sex) %>%
   count() 
+
+
+# what experiments 
+my_experiments=list.files(pattern="sample_info*")
+exp_dat <- do.call(rbind, lapply(my_experiments, read_tsv, 
+                                 col_type="ccccc", col_names=FALSE))

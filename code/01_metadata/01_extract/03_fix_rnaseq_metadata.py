@@ -1,6 +1,8 @@
 # Do this with ENA data
 
-# TODO - tidy up run/sample/experiment --> remove repeated code
+# TODO 
+# - tidy up run/sample/experiment --> remove repeated code
+# - fix dashes
 #
 # for a given SRR (run),
 #   - grab all SRS
