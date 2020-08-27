@@ -23,8 +23,18 @@ require('biomaRt')
 
 
 # ---- are there any studies where we could look at sex diff in drug response? ---- $
-study_db2 %>% filter(study_sex=="mixed sex") %>% arrange(desc(num_present)) %>%
-  select(-num_tot, -study_sex, -dbID, -ATC, -class, -ATC_class) %>%
+exp_metadata <- read_csv("data/01_metadata/human_experiment_metadata.csv", 
+                         col_types="cccc") %>%
+  bind_rows(read_csv("data/01_metadata/mouse_experiment_metadata.csv", 
+                         col_types="cccc")) %>%
+  bind_rows(read_csv("data/01_metadata/human_rnaseq_experiment_metadata.csv", 
+                     col_types="cccc")) %>%
+  bind_rows(read_csv("data/01_metadata/mouse_rnaseq_experiment_metadata.csv", 
+                     col_types="cccc"))
+study_db2 <- read_csv("data/drug_studies.csv")
+large_drug_studies <- study_db2 %>% filter(study_sex=="mixed sex") %>% 
+  arrange(desc(num_present)) %>%
+  dplyr::select(-num_tot, -study_sex, -dbID, -ATC, -class, -ATC_class) %>%
   filter(num_f >= 20 & num_m >=20)
 # GSE36868 - simvastatin
 # GSE31312 - rituximab
@@ -38,6 +48,18 @@ study_db2 %>% filter(study_sex=="mixed sex") %>% arrange(desc(num_present)) %>%
 # GSE9782 - bortezomib
 # GSE66702 - prednisolone
 # ...
+
+large_drug_studies2 <- large_drug_studies %>% 
+  dplyr::select(-num_present) %>%
+  group_by(organism, data_type, study_acc) %>%
+  summarize(drug=paste(name, collapse=";"), 
+            num_f=unique(num_f), 
+            num_m=unique(num_m)) %>%
+  inner_join(exp_metadata %>% dplyr::select(study_acc, title)) %>%
+  dplyr::select(organism, data_type, study_acc, drug, title, num_f, num_m) %>%
+  arrange(desc(num_f+num_m))
+large_drug_studies2 %>% write_csv("data/large_drug_studies.csv")
+
 
 # Tafamidis-treated and untreated V30M FAP patients, asymptomatic V30M carriers,
 # and healthy, age- and sex-matched controls without TTR mutations had whole blood drawn. 
