@@ -20,6 +20,7 @@ gsm_dat = dbGetQuery(con, sprintf("SELECT gsm, source_name_ch1, characteristics_
 geometadb_dat <- gsm_dat  %>% as_tibble()
 rm(gsm_dat)
 save(geometadb_dat, file="data/gsm_meta_geometadb.RData")
+load("data/gsm_meta_geometadb.RData")
 
 separated=geometadb_dat %>% 
   filter(!is.na(characteristics_ch1)) %>% 
@@ -30,6 +31,10 @@ kv <- separated %>%
   separate(characteristics_ch1, into=c("key", "value"), sep=":", #) %>%
            extra="merge", fill="left") %>%
   mutate(key=ifelse(is.na(key), "other", str_trim(tolower(key))))
+# clean up the values
+kv %>% write_csv("data/gsm_key_value.csv")
+
+
 kv %>% group_by(key) %>% count() %>% arrange(desc(n))
 
 kv %>% 
