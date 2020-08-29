@@ -1,3 +1,6 @@
+# Code for fixing ArrayExpress metadata
+# Parses the downloaded json files and sticks it in a dataframe.
+
 require('rjson')
 require('tidyverse')
 

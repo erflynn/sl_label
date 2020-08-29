@@ -28,23 +28,6 @@ common_col <- function(dat, col) {
 print_all <- function(dat) print(dat, n=nrow(dat))
 ####
 
-
-run_to_sample <- read_csv("data/sra_run_to_sample.csv")
-my_samples = list.files(path="data/sra_out", pattern="sample_attr*")
-sample_dat <- do.call(rbind, lapply(my_samples, function(x)
-                                    read_tsv(sprintf("data/sra_out/%s", x), col_type="ccc", 
-                                    col_names=FALSE)))
-sample_dat1 <- sample_dat %>% as_tibble() 
-colnames(sample_dat1) <- c("sample", "key", "value")
-sample_dat2 <- sample_dat1 %>%
-  mutate(across(key:value, tolower)) 
-
-# remove ENA data for now
-sample_dat3 <- sample_dat2 %>% 
-  filter(!str_detect(key, "ena-"))
-rm(sample_dat, sample_dat1, sample_dat2)
-save(sample_dat3, file="data/sample_to_attr_sm.RData")
-
 load("data/sample_to_attr_sm.RData") # 137 MB --> sample_dat3
 sample_dat4 <- sample_dat3 %>% 
   mutate(key=str_trim(str_squish(str_replace_all(key, PUNCT.STR , " ")))) %>%
