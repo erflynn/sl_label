@@ -11,6 +11,7 @@ require('recount') ## warning there are multiple recount packages! --> had to re
 ##  ---- phenopredict ---- ##
 phepred <- recount::add_predictions() # this downloads everything. 70,479
 save(phepred, file="data/10_comparison/phepred_data.RData")
+load("data/10_comparison/phepred_data.RData")
 phepred_sl <- phepred %>% 
   select(sample_id, reported_sex, predicted_sex) %>%
   mutate(reported_sex=tolower(as.character(reported_sex)))
@@ -46,7 +47,7 @@ samp_to_runs <- sraConvert(sample_type_df$sample_accession, 'run', sracon) # 476
 dbDisconnect(sracon)
 
 save(mapped_df, rv_df, sample_type_df, samp_to_runs, file="data/10_comparison/metasra_data.RData")
-
+load("data/10_comparison/metasra_data.RData")
 mapped_df2 <- mapped_df %>% 
   left_join(samp_to_runs, by=c("sample_accession"="sample")) %>%
   dplyr::rename(acc=run)
@@ -77,6 +78,7 @@ metasra_sl <- mapped_df %>%
                                term_id=="UBERON:0003101" ~ "male")) %>%
   left_join(samp_to_runs, by=c("sample_accession"="sample")) %>% 
   rename(acc=run)
+
 
 
 # ---- what is the overlap with refine-bio data? ---- #

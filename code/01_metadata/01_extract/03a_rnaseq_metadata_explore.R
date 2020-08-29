@@ -64,14 +64,71 @@ run_mapping %>% filter(str_detect(samples, ";"))
 # ----- load sample data ------ #
 my_samples = list.files(pattern="sample_attr*")
 sample_dat <- do.call(rbind, lapply(my_samples, 
-                                 read_tsv, col_type="ccc", col_names=FALSE))
+                                 read_tsv, col_type="ccc", 
+                                 col_names=FALSE))
 sample_dat1 <- sample_dat %>% as_tibble() 
 colnames(sample_dat1) <- c("sample", "key", "value")
 sample_dat2 <- sample_dat1 %>%
   mutate(across(key:value, tolower)) 
+sample_dat2 %>% 
+  filter(str_detect(value, "sex|gender"))
+sample_dat2 %>% 
+  filter(!str_detect(key, "sex|gender"), 
+         str_detect(value, "male")) %>% sample_n(10)
+  group_by(key) %>%
+  count() %>%
+  arrange(desc(n))
+# how many have this info  
 
+primary_cells <- sample_dat2 %>% 
+    filter(str_detect(value, "primary") | str_detect(key, "primary"), 
+           str_detect(key, "cell") | str_detect(value, "cell"))  
+
+stem_cells <- sample_dat2 %>% 
+  filter(str_detect(key, "ipsc") | str_detect(value, "ipsc") |
+         ((str_detect(value, "stem") | str_detect(key, "stem"))& 
+         (str_detect(key, "cell") | str_detect(value, "cell"))  ))
+
+# ESCs, ES cells
+
+xenografts <- sample_dat2 %>%
+  filter(str_detect(key, "xenograft") | 
+           str_detect(value, "xenograft"))
+
+cell_data <- sample_dat2 %>%
+  filter(str_detect(key, "cell"))
+
+"cell type", "cell line"
+
+"inferred cell type"
+"cell_subtype"
+"cell source"
+# primary cell
+sample_dat2 %>% 
+  filter(str_detect(key,"primary"), str_detect(value,"cell"))
+
+sample_dat2 %>% filter(str_detect(key, "primary"),
+                         !str_detect(value, "cell"),
+                       !str_detect(key, "cell")) %>%
+  sample_n(10)
+
+sample_dat2 %>% 
+  filter(str_detect(value, "primary"), 
+         !str_detect(value, "cell"),
+         !str_detect(key, "cell")) %>%
+  sample_n(10)
+
+  
+    
+# sex, cell line, 
+# sample source (cell line, primary cell, stem cell, unspecified cell, tissue, xenograft), drug
+# -- cancer?
+# --- sex --- #
 sg_sample_attr <- sample_dat2 %>%
   filter(str_detect(key, "sex|gender")) 
+sg_sample_attr <- sample_dat2 %>%
+  filter(str_detect(value, "sex|gender")) 
+
 
 cl_sample_attr <- sample_dat2 %>%
   filter(str_detect(key, "cell")) 

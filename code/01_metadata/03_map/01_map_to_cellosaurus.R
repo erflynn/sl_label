@@ -6,6 +6,7 @@ require('fuzzyjoin')
 require('stringr')
 require('Hmisc')
 
+# // TODO use labelNgram
 
 options(stringsAsFactors = FALSE)
 # map both study + sample

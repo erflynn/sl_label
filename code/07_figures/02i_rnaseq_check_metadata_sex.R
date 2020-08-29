@@ -70,7 +70,8 @@ table(runs_to_sample_sl$sra_sample_sex)
 
 
 # read in what we have already!
-comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
+comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv", 
+                          col_types="cccccccdcd")
 
 rnaseq_w_sample <- comb_metadata %>% 
   filter(data_type=="rnaseq") %>%

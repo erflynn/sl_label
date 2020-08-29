@@ -49,7 +49,7 @@ trt_unique <- trt %>% group_by(trt) %>% count() %>% arrange(desc(n))
 # ----- drug data ------ #
 # create the synonym DF
 drug_full_info <- read.delim("../labeling/geo2drug/data/00_db_data/drugbank_parsed.txt")
-drug_info_df <- read.delim("../labeling/geo2drug/data/00_db_data/drugbank_vocab_no_nutra.txt")
+drug_info_df <- read_tsv("../labeling/geo2drug/data/00_db_data/drugbank_vocab_no_nutra.txt")
 
 # read in the
 ctl_vocab <- c("none", "no", "control", "untreated", "dmso", "na", "placebo", "saline", "pbs", "mock",
