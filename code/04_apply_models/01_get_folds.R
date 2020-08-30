@@ -102,12 +102,12 @@ best.lambda <- best_pars$lambda_mu
 ggplot(full_df2 %>% filter(!adaptive & grp=="valid" & lambda < 0.5 ), 
        aes(x=lambda, y=class)) + geom_point(aes(col=factor(alpha)))
 
-
+best.ngenes <- 200 # //TODO
 new_idx <- which(seq(0,1,0.1)==best.alpha)
-
+ngenes_idx <- which(c(50, 100, 200, 300, 500)==best.ngenes)
 all_ydf <- do.call(rbind, lapply(1:6, function(idx){
   load(sprintf("data/06_fold_dat/fold_%s_%s_%s_%s.RData", prefix, data_type, ds, idx))
-  return(res[[new_idx]]$ydf)
+  return(res[[new_idx]][[ngenes_idx]]$ydf)
 }))
 
 ydf2 <- all_ydf %>% mutate(ypred=round(as.numeric(as.character(yhat))) )
@@ -131,6 +131,19 @@ if (data_type=="microarray"){
 } else {
   standardizeFlag = FALSE
 }
+
+if (best.ngenes < ncol(X_train)){
+  require('limma')
+  design <- as.matrix(as.numeric(as.character(Y_train)))
+  fit <- lmFit(t(X_train), design)
+  fit <- eBayes(fit)
+  tt <-topTable(fit, number=ncol(X_train))
+  tt$transcript <- rownames(tt)
+  my_genes= head(tt$transcript, best.ngenes)
+  X_train <- X_train[,my_genes]
+  X_test <- X_test[,my_genes]
+}
+
 fit <- glmnet(X_train, Y_train, family="binomial", 
               #lambda=best.lambda, 
               alpha=best.alpha,

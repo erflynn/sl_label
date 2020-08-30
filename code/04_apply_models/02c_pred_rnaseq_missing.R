@@ -21,7 +21,8 @@ exp_samp <- read_csv("data/missing_rnaseq_pred.csv") %>%
   filter(organism==prefix)
 list.studies <- unique(exp_samp$study_acc)
 
-f_exist <- sapply(list.studies, function(study_id) file.exists(sprintf("data/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id)))
+f_exist <- sapply(list.studies, function(study_id) 
+  file.exists(sprintf("data/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id)))
 list.studies[!f_exist]
 
 ## fill in missing files

@@ -14,8 +14,6 @@ require('tidyverse')
 source("code/01_metadata/03_map/00_mapping_utils.R")
 source("code/01_metadata/03_map/00_map_sex_metadata_f.R")
 
-ae_attrib <- read_csv("data/ae_attributes.csv")
-gsm_attrib <- read_csv("data/gsm_key_value.csv")
 
 # -- useful funs -- #
 common_col <- function(dat, col) {
@@ -26,20 +24,46 @@ common_col <- function(dat, col) {
     ungroup()
 }
 print_all <- function(dat) print(dat, n=nrow(dat))
+
+clean_str <-function(my_str) {
+  my_str %>%
+    str_replace_all(PUNCT.STR , " ") %>%
+    str_squish() %>%
+    str_trim() %>%
+    tolower()
+}
 ####
+
+
+# --- load all the data --- #
+ae_attrib <- read_csv("data/ae_attributes.csv")
+gsm_attrib <- read_csv("data/gsm_key_value.csv")
 
 load("data/sample_to_attr_sm.RData") # 137 MB --> sample_dat3
 sample_dat4 <- sample_dat3 %>% 
-  mutate(key=str_trim(str_squish(str_replace_all(key, PUNCT.STR , " ")))) %>%
-  mutate(value=str_trim(str_squish(str_replace_all(value, PUNCT.STR , " ")))) %>%
   filter(key!="biomaterial provider")
 
+run_to_sample <- read_csv("data/sra_run_to_sample.csv")
+rnaseq_dat <- sample_dat4 %>% 
+  inner_join(run_to_sample, by=c("sample"="samples")) %>%
+  rename(sample_acc=run) %>%
+  select(sample_acc, key, value)
 
+all_attrib <- rnaseq_dat %>%
+  bind_rows(gsm_attrib %>% rename(sample_acc=gsm)) %>%
+  bind_rows(ae_attrib) 
+
+# NOTE - slow
+all_attrib_clean <- all_attrib %>%
+  mutate(across(c(key, value), clean_str, .names="{col}_clean")) 
+
+
+
+# --- put it all together --- #
 
 # --- 1. sex labels --- #
 sg_sample_attr <- sample_dat3 %>% 
-  filter(str_detect(key, "sex|gender") & ! 
-           str_detect(key, "sexually transmitted"))
+  filter(str_detect(key, "\\bsex\\b|\\bgender\\b"))
 not_sg <- sample_dat3 %>% anti_join(sg_sample_attr, by="sample") 
 rescue_sg <- not_sg  %>% 
   filter(!str_detect(key, "strain|genetic")) %>% 
@@ -107,7 +131,7 @@ rnaseq2 %>%
   sample_n(10) %>%
   left_join(sg_tab2, by="sample") %>% select(key, value, sex)
 
-# compare to metasra/phepred
+# compare to metasra
 load("data/10_comparison/metasra_data.RData")
 
 metasra_sl <- mapped_df %>% 

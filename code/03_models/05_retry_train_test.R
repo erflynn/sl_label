@@ -1,7 +1,8 @@
 
+require('tidyverse')
 # --- update the RNA-seq 
 
-my_files =list.files(pattern="fold_mouse_rnaseq_sex*")
+my_files =list.files(pattern="fold_human_rnaseq_sex*")
 res_list <- do.call(rbind, lapply(my_files, function(my_f) {
   load(my_f); 
   res_df <- do.call(rbind, lapply(res, function(x) 

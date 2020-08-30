@@ -55,7 +55,9 @@ cell <- metadata %>% filter(cl_line!="" & cl_line!="--") %>%
   right_join(refine_mapped %>% select(gsm, accession), by=c("acc"="gsm")) %>%
   filter(!is.na(cl_line)) %>% select(acc, cl_line, accession)
 
-pos_cl <- cell %>% left_join(mapping, by=c("acc"="sample_acc")) %>% select(-cl_line, -accession) 
+pos_cl <- cell %>% 
+  left_join(mapping, by=c("acc"="sample_acc")) %>% 
+  select(-cl_line, -accession) 
 neg_cl <- no_cell %>% left_join(mapping, by=c("acc"="sample_acc"))  
 
 refine_mapped %>% 

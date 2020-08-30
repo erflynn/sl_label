@@ -27,4 +27,4 @@ xy_genes <- ref_dat %>%
 xy_transcripts <- inner_join(xy_genes, map_l, by=c("ensembl_gene_id"="gene"))
 
 overlap.transcripts <- xy_transcripts %>% filter(transcript %in% gene_names)
-write_csv(overlap.transcripts, sprintf("data/rnaseq/%s/03_model_in/xy_genes_rnaseq.csv", prefix))
+write_csv(overlap.transcripts, sprintf("data/03_train-Data/xy_genes_rnaseq.csv", prefix))
