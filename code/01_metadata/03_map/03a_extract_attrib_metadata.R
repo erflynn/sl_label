@@ -49,6 +49,8 @@ rnaseq_dat <- sample_dat4 %>%
   rename(sample_acc=run) %>%
   select(sample_acc, key, value)
 
+# --- put it all together --- #
+
 all_attrib <- rnaseq_dat %>%
   bind_rows(gsm_attrib %>% rename(sample_acc=gsm)) %>%
   bind_rows(ae_attrib) 
@@ -56,18 +58,18 @@ all_attrib <- rnaseq_dat %>%
 # NOTE - slow
 all_attrib_clean <- all_attrib %>%
   mutate(across(c(key, value), clean_str, .names="{col}_clean")) 
+all_attrib_clean <- all_attrib_clean %>% select(-study_acc)
 
 
-
-# --- put it all together --- #
 
 # --- 1. sex labels --- #
-sg_sample_attr <- sample_dat3 %>% 
-  filter(str_detect(key, "\\bsex\\b|\\bgender\\b"))
-not_sg <- sample_dat3 %>% anti_join(sg_sample_attr, by="sample") 
+sg_sample_attr <- all_attrib_clean %>% 
+  filter(str_detect(key_clean, "\\bsex\\b|\\bgender\\b"))
+not_sg <- all_attrib_clean %>% 
+  anti_join(sg_sample_attr, by="sample_acc") 
 rescue_sg <- not_sg  %>% 
-  filter(!str_detect(key, "strain|genetic")) %>% 
-  filter(str_detect(value, "male"))
+  filter(!str_detect(key_clean, "strain|genetic")) %>% 
+  filter(str_detect(value_clean, "male"))
 
 # sample, key, value, type_key (std/rescue), normalized_value
 sg_mapped <- sg_sample_attr %>% map_sex_metadata(value)
@@ -79,110 +81,25 @@ sg_tab2 <- sg_tab %>%
   left_join(sg_tab %>% map_sex_metadata(value), 
                                 by=c("value"="sex"))
 
+sg_tab2 %>% write_csv("data/01_metadata/mapped_sl_all.csv")
 
-sg_tab2 %>% write_csv("data/01_metadata/mapped_rnaseq_sex.csv")
-
-# collapse
-sg_tab3 <- sg_tab2 %>% 
-  filter(mapped_sex!="") %>%
-  group_by(sample) %>%
-  summarise(mapped_sex=paste(unique(mapped_sex), collapse=";"),
-            type_key=paste(unique(type_key), collapse=";")) 
-sg_tab4 <- sg_tab3 %>%
-  mutate(mapped_sex=ifelse(str_detect(mapped_sex, ";"),"unknown", mapped_sex))
-stopifnot((sg_tab4 %>% distinct(sample) %>% nrow())==nrow(sg_tab4))            
-
-# add a run column
-sg_run <- run_to_sample %>% inner_join(sg_tab4, by=c("samples"="sample")) %>%
-  rename(sample=samples, sex=mapped_sex, key_type=type_key) 
-stopifnot((sg_run %>% distinct(run) %>% nrow())==nrow(sg_run))            
-sg_run %>% write_csv("data/01_metadata/run_mapped_rnaseq_sex.csv")
-
-# compare
-comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv", 
-                          col_types="cccccccdcd")
-
-rnaseq_dat <- comb_metadata %>% filter(data_type=="rnaseq")
-rnaseq2 <- rnaseq_dat %>% 
-  select(sample_acc, organism, metadata_sex) %>% 
-  left_join(sg_run, by=c("sample_acc"="run")) %>%
-  mutate(sex=ifelse(is.na(sex), "unknown", sex))
-table(rnaseq2$metadata_sex, rnaseq2$sex)
-
-sum(rnaseq2$metadata_sex=="unknown")-sum(rnaseq2$sex=="unknown") # 45.7k
-# better :)
-
-# not organism-specific
-rnaseq2 %>% 
-  group_by(organism) %>% 
-  summarise(ms=sum(metadata_sex=="unknown"), ss=sum(sex=="unknown"), n=n()) %>%
-  mutate(diff=ms-ss) %>%
-  mutate(across(c(ss, ms, diff), ~./n))
-
-#sum(rnaseq2$sex=="unknown")/nrow(rnaseq2) # 0.7600228
-#sum(rnaseq2$metadata_sex=="unknown")/nrow(rnaseq2) # 0.8376703
-
-rnaseq2 %>% 
-  filter(metadata_sex=="unknown" & sex!="unknown") %>%
-  common_col(key_type) # 44482 come from std, 1373 come from rescue
-
-rnaseq2 %>% 
-  filter(metadata_sex=="unknown" & sex!="unknown") %>%
-  sample_n(10) %>%
-  left_join(sg_tab2, by="sample") %>% select(key, value, sex)
-
-# compare to metasra
-load("data/10_comparison/metasra_data.RData")
-
-metasra_sl <- mapped_df %>% 
-  filter(term_id %in% c("UBERON:0003100", "UBERON:0003101")) %>%
-  mutate(metasra_sex=case_when(term_id=="UBERON:0003100" ~ "female",
-                               term_id=="UBERON:0003101" ~ "male"))  %>%
-  group_by(sample_accession) %>%
-  summarise(metasra_sex=paste(unique(metasra_sex), collapse=";")) %>%
-  mutate(metasra_sex=ifelse(str_detect(metasra_sex, ";"), "mixed", metasra_sex)) %>%
-  ungroup() 
-nrow(metasra_sl) # 153417
-nrow(sg_tab4) # 127755
-
-# NOTE - metasra has no mouse! but somehow has more data? but less for our samples
-
-comparison_tab <- metasra_sl %>%   
-  left_join(run_to_sample, by=c("sample_accession"="samples")) %>%
-  right_join(rnaseq2, by=c("run"="sample_acc")) %>%
-  mutate(metasra_sex=ifelse(is.na(metasra_sex), "unknown", metasra_sex)) %>%
-  rename(rb_sex=metadata_sex, mapped_sex=sex, sample_acc=run) %>%
-  select(-sample_accession, -sample,-key_type) %>%
-  select(sample_acc, organism, everything())
-comparison_tab %>% 
-  filter(organism=="human") %>% 
-  summarise(ms=sum(metasra_sex=="unknown"), ss=sum(mapped_sex=="unknown"), n=n()) %>%
-  mutate(diff=ms-ss) %>%
-  mutate(across(c(ss, ms, diff), ~./n))
-
-conf_mat_human <- comparison_tab %>% 
-  filter(organism=="human") %>% 
-  group_by(metasra_sex, mapped_sex) %>% 
-  count() %>% 
-  ungroup() %>%
-  pivot_wider(names_from="mapped_sex", values_from="n", values_fill=0) %>%
-  select(metasra_sex, female, male, mixed, unknown)
-# columns are our labels
-conf_mat_human %>% write_csv("tables/metasra_conf_mat_sex.csv")
 
 # --- 2. cell line ---- #
 
 # A) using keys
-cell_data <- sample_dat4 %>% 
-  filter((str_detect(key, "\\bcell") | str_detect(value, "\\bcell")) & 
-           !str_detect(key, "tissue")) 
+cell_data <- all_attrib_clean %>% 
+  filter((str_detect(key_clean, "\\bcell") |
+            str_detect(value_clean, "\\bcell")) & 
+           !str_detect(key_clean, "tissue")) 
 
+cell_line <- all_attrib_clean %>% 
+  filter(str_detect(key_clean, "cell"),
+         str_detect(key_clean, "line"))
 
-cell_line <- sample_dat4 %>% 
-  filter(str_detect(key, "cell") & str_detect(key, "line"))
-
-cell_line2 <- sample_dat4 %>% anti_join(cell_line) %>%
-  filter(str_detect(value, "cell") & str_detect(value, "line"))
+cell_line2 <- all_attrib_clean %>% 
+  anti_join(cell_line) %>%
+  filter(str_detect(value_clean, "cell"),
+         str_detect(value_clean, "line"))
 
 # B) try exact match to values
 map1 <- mapTextCl(cell_line %>% 
@@ -192,13 +109,13 @@ map1 <- mapTextCl(cell_line %>%
                   cell_df_nodash)
 nrow(map1)
 nrow(cell_line %>% distinct(value)) # 3655
-map_input2 <- sample_dat4 %>% 
+map_input2 <- all_attrib_clean %>% 
   anti_join(cell_line) %>% 
   rename(str=value) %>% 
   mutate(orig_str=str) %>%
   distinct(sample, orig_str, str)
 map2 <- map_input2 %>% mapTextCl(cell_df_nodash, three_l=FALSE)
-test2 <- sample_dat4 %>% 
+test2 <- all_attrib_clean %>% 
   anti_join(cell_line) %>% 
   inner_join(map2, by=c("value"="orig_str")) 
 # //TODO: age: p100, p162, etc is bad
@@ -208,10 +125,14 @@ test2 <- sample_dat4 %>%
 
 
 # --- 3. sample type --- #
-xenografts <- sample_dat4 %>% 
-  filter(str_detect(key, "xenograft") | str_detect(value, "xenograft"))
+all_attrib_clean2 <- all_attrib_clean %>% 
+  select(-key, -value) %>% 
+  rename(key=key_clean, value=value_clean)
+xenografts <- all_attrib_clean2 %>% 
+  filter(str_detect(key, "xenograft") | 
+           str_detect(value, "xenograft"))
 
-stem_cells <- sample_dat4 %>%
+stem_cells <- all_attrib_clean2 %>%
   filter(str_detect(key, "\\bipsc\\b") | str_detect(value, "\\bipsc\\b") |
            str_detect(key, "\\bes cell") | str_detect(value, "\\bes cell") |
            str_detect(key, "\\besc\\b") | str_detect(value, "\\besc\\b") |
@@ -219,14 +140,14 @@ stem_cells <- sample_dat4 %>%
            ((str_detect(value, "stem") | str_detect(key, "stem")) & 
               (str_detect(key, "cell") | str_detect(value, "cell")))) 
 
-primary_cells <- sample_dat4 %>% 
+primary_cells <- all_attrib_clean2 %>% 
   filter(str_detect(value, "primary") | str_detect(key, "primary"), 
          str_detect(key, "cell") | str_detect(value, "cell"))  
 
 # tissue
-tissue_dat <- sample_dat4 %>% filter(str_detect(key, "tissue|organ") &
+tissue_dat <- all_attrib_clean2 %>% filter(str_detect(key, "tissue|organ") &
                                        !str_detect(key, "organism|cell|organoid")) 
-rescue_tiss <- sample_dat4 %>% anti_join(tissue_dat) %>%
+rescue_tiss <- all_attrib_clean2 %>% anti_join(tissue_dat) %>%
   filter(str_detect(value, "tissue|organ") &
            !str_detect(value, "organism|cell|organoid") &
            key!="biomaterial_provider") 
@@ -235,26 +156,26 @@ tissue <- bind_rows(tissue_dat, rescue_tiss)
 
 
 cancer_key_words <- str_squish("tumor|cancer|neoplasm|malignant|carcinoma\\b|sarcoma\\b|melanoma\\b|adenoma\\b|lymphoma\\b|leukemia\\b|mesothelioma\\b|hemangioma\\b|glioma\\b|blastoma\\b")
-cancer <- sample_dat4 %>% 
+cancer <- all_attrib_clean2 %>% 
   filter(str_detect(key, cancer_key_words) |str_detect(value, cancer_key_words))
 
 
-hc_cells <- sample_dat4 %>% 
+hc_cells <- all_attrib_clean2 %>% 
   filter(str_detect(key, "culture|passage") |
            str_detect(value, "culture|passage|\\bcell"))
 
 
 
-cell_line_from_tiss <- sample_dat4 %>% 
+cell_line_from_tiss <- all_attrib_clean2 %>% 
   filter(key=="tissue",
          str_detect(value, "\\bcell"), 
          str_detect(value, "line"))
-tiss_from_cell_line <- sample_dat4 %>%
+tiss_from_cell_line <- all_attrib_clean2 %>%
   filter(str_detect(key,"\\bcell\\b"), 
          key!="progenitor cell type",
          str_detect(value, "tissue"),
          !str_detect(value, "\\bcell"))
-blood <- sample_dat4 %>%
+blood <- all_attrib_clean2 %>%
   filter(str_detect(key, "pbmc|whole blood") | 
            str_detect(value,"pbmc|whole blood" ))
 
@@ -359,7 +280,7 @@ simple_comp %>%
 
 # ---- 4. Drugs--- #
 # A) keys
-trt_dat <- sample_dat4 %>% 
+trt_dat <- all_attrib_clean %>% 
   filter(str_detect(key, "treatment|treated|drug|compound") |
            str_detect(value, "treatment|treated|drug|compound")) 
 trt_in <- trt_dat %>% distinct(value) %>% rename(str=value) %>% mutate(src_col=str)
@@ -367,7 +288,7 @@ drug_dat <- labelNgram(trt_in, drug_info_df)
 
 # B) exact match to values
 
-trt_dat2 <- sample_dat4 %>% 
+trt_dat2 <- all_attrib_clean %>% 
   anti_join(trt_dat)
 
 trt_in2 <- trt_dat2 %>% 

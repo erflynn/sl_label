@@ -437,10 +437,14 @@ sex_breakdown_drugs2 %>%
     `female only` > 0.66 & `male only` < 0.33 & num_studies >= 3 ~name,
     `female only` < 0.33 & `male only` > 0.66 & num_studies >= 3 ~ name,
     TRUE ~ ""))  %>%
+  rename("number of studies per drug"=num_studies) %>%
   ggplot(aes(x=`female only`, y=`male only`, col=class))+
-  geom_point(alpha=0.5, aes(size=num_studies), position=position_jitter())+
-  geom_label_repel(size=2, fill="white", aes(label=drug_name))+
+  geom_point(alpha=0.5, aes(size=`number of studies per drug`), 
+             position=position_jitter())+
+  geom_label_repel(size=3, fill="white", aes(label=drug_name))+
   theme_bw()+
+  xlab("proportion of female only studies")+
+  ylab("proportion of male only studies")+
   facet_grid(.~organism)
 ggsave("figures/paper_figs/sex_breakdown_drugs.png")
 

@@ -31,4 +31,5 @@ X_test2 <- do.call(cbind, lapply(1:length(list_genes),
 ))
 #X_test <- apply(X_test, 2, function(col) boxcox(col+0.5)$x.t)
 
-save(list_genes, box_cox_obj, file=sprintf("data/07_model_dat/%s_rnaseq_boxcox.RData"))
+save(list_genes, box_cox_obj, 
+     file=sprintf("data/07_model_dat/%s_rnaseq_boxcox.RData", prefix))

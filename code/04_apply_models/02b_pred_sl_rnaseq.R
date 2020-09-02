@@ -7,14 +7,14 @@ args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
 idx <- as.numeric(args[2])
 ds <- "sex"
-extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
+extractChunk <- function(my.list, idx, SIZE.CHUNK=500){
   NUM.CHUNKS <- ceiling(length(my.list)/SIZE.CHUNK)
   end_idx <- ifelse((NUM.CHUNKS-1) == idx ,length(my.list), (idx+1)*SIZE.CHUNK)
   return(my.list[(idx*SIZE.CHUNK+1):end_idx])
 }
 
 # prediction function, list of genes
-load("data/07_model_dat/human_rnaseq_boxcox.RData") # --> list_genes, box_cox_obj
+load(sprintf("data/07_model_dat/%s_rnaseq_boxcox.RData", prefix)) # --> list_genes, box_cox_obj
 load(file=sprintf("data/07_model_dat/fit_%s_rnaseq_%s.RData", prefix, ds))
 my_rows <- unique(rownames(fit$beta))
 stopifnot(my_rows==list_genes)
@@ -40,7 +40,7 @@ f_exist <- sapply(list.studies, function(study_id)
 sample_df <- exp_samp %>% 
   filter(present & study_acc %in% list.studies[f_exist])
 
-study_chunk <- extractChunk(list.studies[f_exist], idx, 50)
+study_chunk <- extractChunk(list.studies[f_exist], idx, 500)
 print("extracting")
 all_dat0 <- do.call(cbind, lapply(study_chunk, slStudy))
 all_dat <- t(all_dat0[,intersect(colnames(all_dat0),sample_df$sample_acc)]) # filter for appropriate ones

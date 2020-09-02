@@ -107,6 +107,10 @@ mouse_microarray <- constructDS("mouse", "microarray", mouse_rnaseq$sample_acc)
 human_rnaseq <- constructDS("human", "rnaseq")
 human_microarray <- constructDS("human", "microarray", human_rnaseq$sample_acc)
 
+# re-read all the sex labeling metadata
+rnaseq_files <- list.files(path="data/08_model_out/", pattern="*.csv")
+rnaseq_sl <- rnaseq_files %>% map(~read_csv(sprintf("data/08_model_out/%s",.x))) %>% bind_rows()
+head(rnaseq_sl)
 
 # make this table 
 #   | sample_acc | organism | data_type | platform | study_acc | metadata_sex | expr_sex
@@ -117,6 +121,24 @@ comb_metadata <- do.call(rbind, list(human_microarray,
                                         mouse_rnaseq)) %>%
   select(sample_acc, organism, data_type, platform, study_acc, 
          metadata_sex, expr_sex, p_male ) 
+
+rnaseq_sl2 <- comb_metadata %>% filter(data_type=="rnaseq") %>% 
+  full_join(rnaseq_sl,by=c("sample_acc"="id"))
+ggplot(rnaseq_sl2 %>% filter(num_reads > 100000), aes(x=pred, col=metadata_sex))+
+  geom_density()+
+  facet_grid(organism ~ ., scales="free")
+
+df <- rnaseq_sl2 %>% 
+  filter(metadata_sex %in% c("male", "female"), 
+         num_reads > 100000,
+        !is.na(pred)) %>%
+  mutate(est_sex=ifelse(pred > 0.5, "male", "female")) %>%
+  filter(organism=="human")
+table(df$est_sex==df$metadata_sex)/nrow(df)
+table(df$expr_sex==df$metadata_sex)/nrow(df)
+ggplot(df %>% filter(num_reads > 100000), aes(x=pred,  col=metadata_sex))+
+  geom_density()+
+  facet_grid(organism ~ ., scales="free")
 
 # ---- read in QC information for RNA-seq ---- #
 h_present <- read_csv("data/01_metadata/human_rnaseq_exp_to_sample2.csv") %>% mutate(organism="human")
