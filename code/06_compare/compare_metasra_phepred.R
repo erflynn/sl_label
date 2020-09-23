@@ -340,7 +340,8 @@ table(cl_both$sample_type2)
 require('rjson')
 cvcl_map <- fromJSON(file="../metasra_cvcl_mappings.json") 
 
-cvcl_df <- do.call(rbind, lapply(cvcl_map, function(x) paste(sort(x$mapped_terms), collapse=";")))
+cvcl_df <- do.call(rbind, lapply(cvcl_map, function(x) 
+  paste(x$mapped_terms, collapse=";")))
 cvcl_df %>% head()
 cell_mapped <- mapped_df %>% filter(str_detect(term_id, "CVCL")) %>%
   mutate(term_id2=str_replace_all(tolower(term_id), ":", "_"))

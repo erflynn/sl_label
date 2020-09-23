@@ -27,7 +27,7 @@ sampleMat <- function(sample_id, study_id){
       	 #my_dat <- read.delim(sample.path, skip=1)
 	 #colnames(my_dat) <- c("Name", "Length","EffectiveLength","TPM", "NumReads")
       }
-      quant_sf <- my_dat %>% dplyr::select(Name, TPM);
+      quant_sf <- my_dat %>% dplyr::select(Name, NumReads);
       colnames(quant_sf) <- c("gene_name", sample_id);
       
       #if (sample_id==sample_list$sample_acc[[1]]){

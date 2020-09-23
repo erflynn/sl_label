@@ -2,7 +2,7 @@
 #SBATCH --job-name=m_download
 #SBATCH --output=m_download.out
 #SBATCH --error=m_download.err
-#SBATCH --time=6:00:00 
+#SBATCH --time=48:00:00 
 #SBATCH --mem=15000
 #SBATCH --partition=rbaltman
 

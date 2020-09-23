@@ -92,6 +92,24 @@ table(mu_s2$source_type)
 stopifnot(nrow(comb_metadata)==nrow(mu_s2))
 mu_s2 %>% write_csv("data/sample_source_type.csv")
 
+src_type <- read_csv("data/sample_source_type.csv")
+comb_metadata2 <- comb_metadata %>% select(-platform, -present, -num_reads) %>%
+  left_join(src_type %>% select(acc, source_type),
+            by=c("sample_acc"="acc")) 
+cells <- comb_metadata2 %>% 
+  filter(source_type %in% c("stem_cell", "primary_cells"))
+cells2 <- cells %>%
+  separate_rows(study_acc, sep=";") %>%
+  group_by(organism, data_type, study_acc, source_type) %>%
+  summarise(num_samples=n(),
+         female=sum(p_male < 0.3),
+         male=sum(p_male > 0.7),
+         unlabeled=num_samples-female-male)
+cells3 <- cells2 %>% filter(num_samples>=20, 
+                            female>=10, male >=10) %>%
+  arrange(desc(female+male))
+cells3 %>% View()
+
 # Figure (A): density
 comb_metadata_w_src <- comb_metadata %>% 
   inner_join(mu_s2 %>% 
@@ -705,6 +723,32 @@ ggplot(hc_switch %>%
   geom_hline(yintercept=0, lty=1, col="gray")
 
 
+ggplot(hc_switch %>%
+         mutate(num_s=ifelse(num_s > 100, 100, num_s)) %>%
+         rename(`number of samples`=num_s), 
+       aes(y=avg_p_male, x=cl_name))+
+  #scale_fill_manual(values=c("black", "purple"))+
+  #scale_color_manual(values=c("black", "purple"))+
+  geom_violin()+
+  geom_point(alpha=0.2, aes(size=`number of samples`))+
+  scale_size(breaks=c(1,5,10,25, 50, 100))+
+  geom_errorbar(aes(ymin=ci_l, ymax=ci_u), 
+                alpha=0.2,width=0.3)+
+  theme_bw()+
+  theme(panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(axis.text.x = element_text(angle = 90, size=7,
+                                   vjust = 0.5, hjust=1))+
+  ylab("Average P(male)")+
+  xlab("Cell line")+
+  #geom_text(aes(label=cl_name), size=2, 
+  #              position=position_jitter(0.1))+
+  geom_hline(yintercept=0.5, lty=2, col="gray")+
+  geom_hline(yintercept=1, lty=1, col="gray")+
+  geom_hline(yintercept=0, lty=1, col="gray")
+
+
 
 # ---- allele frequency in text ---- #
 allele_freq <- read_csv("data/00_db_data/cellosaurus_allele_freq.csv")
@@ -768,7 +812,7 @@ study_grp <- samples_cl_sl %>%
   separate_rows(study_acc, sep=";") %>%
   group_by(cl_acc) %>%
   group_by(cl_acc, study_acc) %>%
-  summarize(num_samples=n(),
+  summarise(num_samples=n(),
           avg_p_study=mean(p_male),
           se_p_study=sd(p_male)) %>%
   ungroup() %>%

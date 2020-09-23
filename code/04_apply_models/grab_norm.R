@@ -1,5 +1,6 @@
 
 require('bestNormalize')
+require('tidyverse')
 miceadds::load.Rdata(sprintf("data/05_train_df/%s_rnaseq_%s_pos_expr.RData", prefix, ds), "pos")
 miceadds::load.Rdata(sprintf("data/05_train_df/%s_rnaseq_%s_neg_expr.RData", prefix, ds), "neg")
 pos <- pos %>% rename(rid=gene_name)

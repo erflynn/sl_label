@@ -1,5 +1,11 @@
 # Utilities for n-gram mapping
-
+require('tidyverse')
+require('rjson')
+require('tidytext')
+require('tidyverse')
+require('fuzzyjoin')
+require('stringr')
+require('Hmisc')
 
 PUNCT.STR <- "[-|,|\\.|/|#|_|(|)|+|;|:|\t|}|{|\\[|\\]|']"
 labelNgram <- function(text_df, ref_df, remove_short=TRUE){
@@ -8,7 +14,7 @@ labelNgram <- function(text_df, ref_df, remove_short=TRUE){
     unique()
   text_df2 <- text_df %>% 
     mutate(clean_str=str_trim(str_squish(str_replace_all(str, PUNCT.STR , " ")))) %>%
-    select(src_col, clean_str, str) %>%
+    select(clean_str, str) %>%
     unique()
   
   # separate out the data into unigrams
@@ -17,6 +23,7 @@ labelNgram <- function(text_df, ref_df, remove_short=TRUE){
   
   if (remove_short){
     sample_unigrams <- sample_unigrams %>% 
+      filter(str_detect(word, "[A-z]")) %>% # remove all numeric
       filter(str_length(word) > 3 & is.na(as.numeric(word))) # remove short words or numbers 
   } 
   

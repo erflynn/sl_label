@@ -27,7 +27,7 @@ my.cols6 <- c (my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
 # --- construct the data frame --- #
 # how we want the data formatted:
 # organism | data_type | study | study_type | drug | drug_class
-comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
+comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv", col_types="cccccccdld")
 by_study <- read_csv("data/study_sex_lab.csv")
 
 # load drugbank data 
@@ -432,6 +432,7 @@ sex_breakdown_drugs2 <- sex_breakdown_drugs %>%
   mutate(num_studies=`mixed sex`+`female only`+`male only`) %>%
   select(-unknown) %>%
   mutate(across(c(`mixed sex`, `female only`, `male only`), ~./num_studies))
+sex_breakdown_drugs2 %>% write_csv("data/by_drug_study_sex_fraction.csv")
 sex_breakdown_drugs2 %>%
   mutate(drug_name=case_when(
     `female only` > 0.66 & `male only` < 0.33 & num_studies >= 3 ~name,

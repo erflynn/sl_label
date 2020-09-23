@@ -13,5 +13,6 @@
 # -- FOR rnaseq -- #
 #wget https://data-refinery-s3-compendia-circleci-prod.s3.amazonaws.com/HOMO_SAPIENS_1_1574170428.zip
 
+wget https://data-refinery-s3-compendia-circleci-prod.s3.amazonaws.com/HOMO_SAPIENS_1_1574170428.zip
 # -- unzip the data -- #
 unzip HOMO_SAPIENS_1_1574170428.zip

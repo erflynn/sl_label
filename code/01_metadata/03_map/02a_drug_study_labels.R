@@ -42,6 +42,9 @@ comb_data <- compendia_data %>%
 comb_data2 <- comb_data %>% 
   select(organism, data_type, study_acc, str) %>%
   unique()
+comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv", col_types="cccccccdld")
+
+# what study data is present
 
 # ----- drug data ------ #
 # create the synonym DF

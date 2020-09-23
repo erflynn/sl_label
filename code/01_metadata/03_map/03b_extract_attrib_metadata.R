@@ -16,6 +16,16 @@ source("code/01_metadata/03_map/00_map_sex_metadata_f.R")
 
 
 # -- useful funs -- #
+
+clean_str <-function(my_str, fill=" ") {
+  my_str %>%
+    str_replace_all(PUNCT.STR , fill) %>%
+    str_squish() %>%
+    str_trim() %>%
+    tolower()
+}
+
+
 common_col <- function(dat, col) {
   dat %>% 
     group_by({{col}}) %>% 
@@ -25,41 +35,9 @@ common_col <- function(dat, col) {
 }
 print_all <- function(dat) print(dat, n=nrow(dat))
 
-clean_str <-function(my_str) {
-  my_str %>%
-    str_replace_all(PUNCT.STR , " ") %>%
-    str_squish() %>%
-    str_trim() %>%
-    tolower()
-}
+
 ####
-
-
-# --- load all the data --- #
-ae_attrib <- read_csv("data/ae_attributes.csv")
-gsm_attrib <- read_csv("data/gsm_key_value.csv")
-
-load("data/sample_to_attr_sm.RData") # 137 MB --> sample_dat3
-sample_dat4 <- sample_dat3 %>% 
-  filter(key!="biomaterial provider")
-
-run_to_sample <- read_csv("data/sra_run_to_sample.csv")
-rnaseq_dat <- sample_dat4 %>% 
-  inner_join(run_to_sample, by=c("sample"="samples")) %>%
-  rename(sample_acc=run) %>%
-  select(sample_acc, key, value)
-
-# --- put it all together --- #
-
-all_attrib <- rnaseq_dat %>%
-  bind_rows(gsm_attrib %>% rename(sample_acc=gsm)) %>%
-  bind_rows(ae_attrib) 
-
-# NOTE - slow
-all_attrib_clean <- all_attrib %>%
-  mutate(across(c(key, value), clean_str, .names="{col}_clean")) 
-all_attrib_clean <- all_attrib_clean %>% select(-study_acc)
-
+load("data/01_metadata/all_sample_attrib_clean.RData") # --> all_attrib_clean
 
 
 # --- 1. sex labels --- #
@@ -72,14 +50,14 @@ rescue_sg <- not_sg  %>%
   filter(str_detect(value_clean, "male"))
 
 # sample, key, value, type_key (std/rescue), normalized_value
-sg_mapped <- sg_sample_attr %>% map_sex_metadata(value)
-sg_mapped2 <- rescue_sg %>% map_sex_metadata(value)
+sg_mapped <- sg_sample_attr %>% map_sex_metadata(value_clean)
+sg_mapped2 <- rescue_sg %>% map_sex_metadata(value_clean)
 sg_tab <- sg_sample_attr %>% 
   mutate(type_key="std") %>%
   bind_rows(rescue_sg %>% mutate(type_key="rescue")) 
 sg_tab2 <- sg_tab %>% 
-  left_join(sg_tab %>% map_sex_metadata(value), 
-                                by=c("value"="sex"))
+  left_join(sg_tab %>% map_sex_metadata(value_clean), 
+                                by=c("value_clean"="sex"))
 
 sg_tab2 %>% write_csv("data/01_metadata/mapped_sl_all.csv")
 
@@ -92,37 +70,7 @@ cell_data <- all_attrib_clean %>%
             str_detect(value_clean, "\\bcell")) & 
            !str_detect(key_clean, "tissue")) 
 
-cell_line <- all_attrib_clean %>% 
-  filter(str_detect(key_clean, "cell"),
-         str_detect(key_clean, "line"))
-
-cell_line2 <- all_attrib_clean %>% 
-  anti_join(cell_line) %>%
-  filter(str_detect(value_clean, "cell"),
-         str_detect(value_clean, "line"))
-
-# B) try exact match to values
-map1 <- mapTextCl(cell_line %>% 
-                    rename(str=value) %>% 
-                    mutate(orig_str=str) %>% 
-                    select(sample, orig_str, str), 
-                  cell_df_nodash)
-nrow(map1)
-nrow(cell_line %>% distinct(value)) # 3655
-map_input2 <- all_attrib_clean %>% 
-  anti_join(cell_line) %>% 
-  rename(str=value) %>% 
-  mutate(orig_str=str) %>%
-  distinct(sample, orig_str, str)
-map2 <- map_input2 %>% mapTextCl(cell_df_nodash, three_l=FALSE)
-test2 <- all_attrib_clean %>% 
-  anti_join(cell_line) %>% 
-  inner_join(map2, by=c("value"="orig_str")) 
-# //TODO: age: p100, p162, etc is bad
-# key: tissue, value:lncap
-# 129s6 is bad -- need a list of common mouse strains to remove
-# // TODO read in list of mouse strains
-
+# separately for mouse/human??
 
 # --- 3. sample type --- #
 all_attrib_clean2 <- all_attrib_clean %>% 
@@ -180,18 +128,18 @@ blood <- all_attrib_clean2 %>%
            str_detect(value,"pbmc|whole blood" ))
 
 # sample_id | xenograft | stem_cells | primary_cells | tissue | cancer | cell_line | cells
-sample_src_tab <- xenografts %>% select(sample) %>% mutate(xenograft=TRUE) %>%
-  full_join(stem_cells %>% select(sample) %>% mutate(stem_cell=TRUE)) %>%
-  full_join(primary_cells %>% select(sample) %>% mutate(primary_cell=TRUE)) %>%
-  full_join(tissue %>% select(sample) %>% mutate(tissue=TRUE)) %>%
-  full_join(cancer %>% select(sample) %>% mutate(cancer=TRUE)) %>%
-  full_join(cell_line %>% bind_rows(cell_line2) %>% select(sample) %>% mutate(cell_line=TRUE)) %>%
-  full_join(hc_cells %>% select(sample) %>% mutate(cells=TRUE))
+sample_src_tab <- xenografts %>% select(sample_acc) %>% mutate(xenograft=TRUE) %>%
+  full_join(stem_cells %>% select(sample_acc) %>% mutate(stem_cell=TRUE)) %>%
+  full_join(primary_cells %>% select(sample_acc) %>% mutate(primary_cell=TRUE)) %>%
+  full_join(tissue %>% select(sample_acc) %>% mutate(tissue=TRUE)) %>%
+  full_join(cancer %>% select(sample_acc) %>% mutate(cancer=TRUE)) %>%
+  full_join(cell_line %>% bind_rows(cell_line2) %>% select(sample_acc) %>% mutate(cell_line=TRUE)) %>%
+  full_join(hc_cells %>% select(sample_acc) %>% mutate(cells=TRUE))
 
 sample_src_tab2 <- sample_src_tab %>%
-  mutate(across(-sample, ~replace_na(.,FALSE))) %>%
+  mutate(across(-sample_acc, ~replace_na(.,FALSE))) %>%
   distinct()
-stopifnot(length(unique(sample_src_tab2$sample))==nrow(sample_src_tab2))
+stopifnot(length(unique(sample_src_tab2$sample_acc))==nrow(sample_src_tab2))
 
 sample_src_tab2 %>% filter(primary_cell, tissue)
 
@@ -206,20 +154,21 @@ src_tab <- sample_src_tab2 %>%
     #cells ~ "cell",
     TRUE~"other"
   )) %>%
-  mutate(source_type=ifelse(sample %in% blood$sample | 
-                               sample %in% tiss_from_cell_line$sample, 
+  mutate(source_type=ifelse(sample_acc %in% blood$sample_acc | 
+                               sample_acc %in% tiss_from_cell_line$sample_acc, 
                             "tissue", source_type))
 
 table(src_tab$source_type)
 
 src_tab %>% filter(tissue, cell_line) %>% nrow()
 
+run_to_sample <- read_csv("data/sra_run_to_sample.csv")
 compare_src <- src_tab %>% 
-  select(sample, source_type) %>%
-  full_join(run_to_sample, by=c("sample"="samples")) %>%
+  select(sample_acc, source_type) %>%
+  full_join(run_to_sample, by=c("sample_acc"="run")) %>%
   mutate(source_type=replace_na(source_type, "other")) %>%
   left_join(sample_type_df %>% rename(metasra_type=sample_type), 
-            by=c("sample"="sample_accession")) %>%
+            by=c("samples"="sample_accession")) %>%
   mutate(metasra_type=case_when(is.na(metasra_type) ~ "other",
                                 str_detect(metasra_type, "induced") ~ "stem cells",
                                 TRUE ~ metasra_type) )
