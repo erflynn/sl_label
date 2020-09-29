@@ -14,7 +14,8 @@
 # - get HC data and compare!
 
 require('tidyverse')
-comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv")
+comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta_v2.csv", 
+                          col_types="cccccccdld") # TODO - make sure correct
 by_study <- read_csv("data/study_sex_lab.csv")
 
 # create a table w accuracies
@@ -92,7 +93,8 @@ createAccDf <- function(my_organism, my_data_type, cutoffs=NULL){
     group_by(sample_acc) %>%
     mutate(any_train=(length(intersect(str_split(study_acc, ";")[[1]], 
                                        train_studies)) !=0)) %>%
-    ungroup() 
+    ungroup() %>%
+    filter(metadata_sex != "unknown")
   
   extended_test2 <- extended_test %>% filter(!any_train) 
   write_csv(extended_test2, sprintf("data/%s_%s_extended_test.csv", my_organism, my_data_type))

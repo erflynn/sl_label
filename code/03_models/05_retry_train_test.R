@@ -1,5 +1,14 @@
 
 require('tidyverse')
+
+
+# --- training and test set setup --- #
+
+
+
+
+
+
 # --- update the RNA-seq 
 
 my_files =list.files(pattern="fold_human_rnaseq_sex*")

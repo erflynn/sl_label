@@ -105,8 +105,8 @@ cells2 <- cells %>%
          female=sum(p_male < 0.3),
          male=sum(p_male > 0.7),
          unlabeled=num_samples-female-male)
-cells3 <- cells2 %>% filter(num_samples>=20, 
-                            female>=10, male >=10) %>%
+cells3 <- cells2 %>% filter(num_samples>=10, 
+                            female>=5, male >=5) %>%
   arrange(desc(female+male))
 cells3 %>% View()
 

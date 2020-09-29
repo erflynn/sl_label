@@ -35,7 +35,7 @@ by_study <- read_csv("data/study_sex_lab.csv")
 drugbank_study_dat <- read_csv("data/02_labeled_data/study_to_drug.csv")
 drugbank_study_level <- drugbank_study_dat %>%
   group_by(organism, data_type, study_acc) %>%
-  summarize(across(dbID:ATC, ~paste(unique(.), collapse=";"))) %>%
+  summarise(across(dbID:ATC, ~paste(unique(.), collapse=";"))) %>%
   ungroup()
 
 
@@ -201,7 +201,7 @@ class_mixed_vs_single <- count_per_class_df %>%
     study_sex=="mixed sex" ~ "mixed sex"
   )) %>%
   group_by(organism, class, study_sex) %>%
-  summarize(num_in_grp=sum(num_in_grp),
+  summarise(num_in_grp=sum(num_in_grp),
             num_not_in_grp=sum(num_not_in_grp)) %>%
   ungroup() %>%
   group_split(organism, class) 
@@ -486,7 +486,7 @@ by_study %>% filter(label_type=="expression") %>%
   arrange(desc(num_f+num_m))
 # ----------------------------------------------------- #
   
-stud_tiss %>% group_by(source_type) %>% summarize(sum(n))
+stud_tiss %>% group_by(source_type) %>% summarise(sum(n))
 cc_no_cl <- cancer_drugs %>% 
   inner_join(stud_tiss2 %>% 
                select(study_acc, tissue, cancer, cell_line, tot )) %>%

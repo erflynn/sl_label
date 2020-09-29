@@ -23,10 +23,11 @@ sg_tab4 <- sg_tab3 %>%
 stopifnot((sg_tab4 %>% distinct(sample) %>% nrow())==nrow(sg_tab4))            
 
 # add a run column
-sg_run <- run_to_sample %>% inner_join(sg_tab4, by=c("samples"="sample")) %>%
+sg_run <- run_to_sample %>% 
+  inner_join(sg_tab4, by=c("samples"="sample")) %>%
   rename(sample=samples, sex=mapped_sex, key_type=type_key) 
 stopifnot((sg_run %>% distinct(run) %>% nrow())==nrow(sg_run))            
-sg_run %>% write_csv("data/01_metadata/run_mapped_rnaseq_sex.csv")
+#sg_run %>% write_csv("data/01_metadata/run_mapped_rnaseq_sex.csv")
 
 
 # get the list of all samples in our dataset
