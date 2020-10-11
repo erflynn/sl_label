@@ -18,6 +18,21 @@ comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta_v2.csv",
                           col_types="cccccccdld") # TODO - make sure correct
 by_study <- read_csv("data/study_sex_lab.csv")
 
+f_only_samples <- comb_metadata %>% filter(data_type == "rnaseq", organism=="mouse", 
+                         metadata_sex!="unknown", present, !is.na(expr_sex)) %>%
+  separate_rows(study_acc, sep=";") %>% 
+  semi_join(
+    by_study %>% 
+      filter(data_type=="rnaseq", organism=="mouse", 
+             label_type=="metadata", 
+             study_sex=="female only")
+  )
+
+ggplot(f_only_samples, aes(x=p_male))+
+  geom_density()
+# what is going on with this mess?
+
+
 # create a table w accuracies
 #  organism | data_type | assess_ds | cutoff | num_samples | num_f | num_m | num_studies | accuracy
 

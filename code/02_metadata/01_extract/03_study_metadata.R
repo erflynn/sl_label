@@ -1,6 +1,8 @@
+# put together the study metadata
+
 require('tidyverse')
 require('tidytext')
-source("code/01_metadata/03_map/00_mapping_utils.R")
+#source("code/01_metadata/03_map/00_mapping_utils.R")
 options(stringsAsFactors = FALSE)
 
 # read in the metadata and clean up missing fields
@@ -27,7 +29,8 @@ sra_data <- read_csv("data/01_metadata/human_rnaseq_experiment_metadata.csv") %>
 comb_data <- compendia_data %>% 
   anti_join(sra_data, by="study_acc") %>%
   bind_rows(sra_data) %>%
-  mutate(across(c(title,description), ~ifelse(is.na(.) | . == "No description.", "", .))) %>%
+  mutate(across(c(title,description), 
+                ~ifelse(is.na(.) | . == "No description.", "", .))) %>%
   mutate(str=paste(title, description, sep=" ")) 
 
 comb_data2 <- comb_data %>% 

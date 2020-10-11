@@ -3,10 +3,34 @@
 # Updated 8/3/2020
 #
 # Label samples that have drug info based on the refine-bio treatment field
+# Note: this looks only at the refine-bio treatment field and does not look at other fields in the data.
 
 require('tidyverse')
 require('tidytext')
 source("code/01_metadata/03_map/00_mapping_utils.R")
+
+
+# # ---- 4. Drugs--- #
+# # A) keys
+# trt_dat <- all_attrib_clean %>% 
+#   filter(str_detect(key, "treatment|treated|drug|compound") |
+#            str_detect(value, "treatment|treated|drug|compound")) 
+# trt_in <- trt_dat %>% distinct(value) %>% rename(str=value) %>% mutate(src_col=str)
+# drug_dat <- labelNgram(trt_in, drug_info_df)
+# 
+# # B) exact match to values
+# 
+# trt_dat2 <- all_attrib_clean %>% 
+#   anti_join(trt_dat)
+# 
+# trt_in2 <- trt_dat2 %>% 
+#   distinct(value) %>% 
+#   rename(str=value) %>% 
+#   mutate(src_col=str)
+# drug_dat2 <- labelNgram(trt_in2, drug_info_df)
+# 
+# # same, "olive oil", "nadh", "dmso", "lactose", "dhea", "cyclo", "beam",
+
 
 options(stringsAsFactors = FALSE)
 

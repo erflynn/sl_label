@@ -5,7 +5,6 @@
 # - add in list of major tissue types
 # - get arrayexpress data
 # - check GEO data
-# - clean up CL (needs Ngram) + drug mapping functions
 # - apply cleaned functions --> drugs, cells
 # - create output df for sample source
 # - make sure using "\\b" when we need
@@ -26,14 +25,6 @@ clean_str <-function(my_str, fill=" ") {
 }
 
 
-common_col <- function(dat, col) {
-  dat %>% 
-    group_by({{col}}) %>% 
-    count() %>% 
-    arrange(desc(n)) %>%
-    ungroup()
-}
-print_all <- function(dat) print(dat, n=nrow(dat))
 
 
 ####
@@ -60,13 +51,12 @@ sg_tab2 <- sg_tab %>%
                                 by=c("value_clean"="sex"))
 
 
-sg_tab3 <- sg_tab2 %>% unique()
+sg_tab3 <- sg_tab2 %>% unique() %>%   filter(!str_detect(key_clean, "recipient|donor|child|sex chromosome complement")) 
   
 mult_row <- sg_tab3 %>%  group_by(sample_acc) %>% count() %>% arrange(desc(n)) %>% filter(n > 1)
 single_row <- sg_tab3 %>% anti_join(mult_row) %>% select(sample_acc, key_clean, value_clean, type_key, mapped_sex)
 mult_row_condensed <- sg_tab3 %>% semi_join(mult_row) %>%
   filter(mapped_sex != "unknown") %>%
-  filter(!str_detect(key_clean, "recipient|donor|child|sex chromosome complement")) %>%
   group_by(sample_acc) %>%
   summarise(key_clean=paste(unique(key_clean), collapse=";"),
             value_clean=paste(unique(value_clean), collapse=";"),
@@ -245,23 +235,3 @@ simple_comp %>%
 
 # TODO compare to JSON http://metasra.biostat.wisc.edu/publication.html
 
-# ---- 4. Drugs--- #
-# A) keys
-trt_dat <- all_attrib_clean %>% 
-  filter(str_detect(key, "treatment|treated|drug|compound") |
-           str_detect(value, "treatment|treated|drug|compound")) 
-trt_in <- trt_dat %>% distinct(value) %>% rename(str=value) %>% mutate(src_col=str)
-drug_dat <- labelNgram(trt_in, drug_info_df)
-
-# B) exact match to values
-
-trt_dat2 <- all_attrib_clean %>% 
-  anti_join(trt_dat)
-
-trt_in2 <- trt_dat2 %>% 
-  distinct(value) %>% 
-  rename(str=value) %>% 
-  mutate(src_col=str)
-drug_dat2 <- labelNgram(trt_in2, drug_info_df)
-
-# same, "olive oil", "nadh", "dmso", "lactose", "dhea", "cyclo", "beam",

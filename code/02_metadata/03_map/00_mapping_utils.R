@@ -8,6 +8,36 @@ require('stringr')
 require('Hmisc')
 
 PUNCT.STR <- "[-|,|\\.|/|#|_|(|)|+|;|:|\t|}|{|\\[|\\]|']"
+
+
+clean_str <-function(my_str, fill=" ") {
+  my_str %>%
+    str_replace_all(PUNCT.STR , fill) %>%
+    str_squish() %>%
+    str_trim() %>%
+    tolower()
+} 
+
+common_col <- function(dat, col) {
+  dat %>% 
+    group_by({{col}}) %>% 
+    count() %>% 
+    arrange(desc(n)) %>%
+    ungroup()
+}
+print_all <- function(dat) print(dat, n=nrow(dat))
+
+
+# --- code for cleaning metadata --- #
+clean_metadata <- function(x, keywords){
+  y <- str_replace_all(x, PUNCT.STR, " ");  # substitute punctuation characters
+  y <- gsub(keywords, " ", y); # remove specific words
+  y <- str_squish(y); # remove repeated whitespace
+  z <- str_trim(y) # remove trailing spaces
+  return(z)
+}
+
+# --- code for labeling ngram data --- #
 labelNgram <- function(text_df, ref_df, remove_short=TRUE){
   ref_df2 <- ref_df %>%
     mutate(clean_name=str_trim(str_squish(str_replace_all(name, PUNCT.STR , " ")))) %>%

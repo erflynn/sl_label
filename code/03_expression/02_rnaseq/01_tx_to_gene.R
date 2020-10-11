@@ -1,7 +1,7 @@
 # ----  convert transcripts to genes ----- #
 library('tximport')
 library('data.table')
-require('tidyverse')
+library('tidyverse')
 
 args <- commandArgs(trailingOnly=TRUE)
 prefix <- args[1]
@@ -47,8 +47,10 @@ extractGeneCounts <- function(study_id){
       # then we join together (this puts NAs where it is missing)
       
       file_lengths <- sapply(list_samples, function(x) read.table(pipe(sprintf("wc -l '%s'", x)))[[1]])
-
-      my_l <- tibble("sample"=names(file_lengths), "file_length"=file_lengths)
+      
+      my_l <- tibble("sample"=names(file_lengths), 
+                     "file_length"=file_lengths) %>%
+        filter(file_length > 10000)
       txi2 <- lapply(my_l %>% group_split(file_length), function(x)
         {list_samples2 <-list_samples[x$sample   ]
         my_df <-data.frame(tximport(list_samples2, type = "salmon", tx2gene = tx2gene)$counts)
