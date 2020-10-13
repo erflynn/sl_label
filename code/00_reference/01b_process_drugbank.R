@@ -9,11 +9,11 @@
 
 require('rjson')
 require('tidyverse')
-source('code/utils/drug_count_utils.R')
+#source('code/utils/drug_count_utils.R')
 
 
 # load drugbank data and convert it into a data frame with one row per drug
-drugbank <- fromJSON(file="data/00_db_data/drugbank_info.json") 
+drugbank <- fromJSON(file="data/00_reference/drugbank_info.json") 
 list.drugs <- lapply(drugbank, function(x) unique(unlist(tolower(c(x$synonyms, x$name)))))
 names(list.drugs) <- lapply(drugbank, function(y) y$dbID)
 
@@ -26,7 +26,7 @@ drugbank_df <- do.call(rbind,
 # escape quotes
 drugbank_df$name <- sapply(drugbank_df$name, function(x) gsub( '\\"', "\\\'\'", x))
 drugbank_df$synonyms <- sapply(drugbank_df$synonyms, function(x) gsub( '\\"', "\\\'\'", x))
-write.table(drugbank_df, file="data/00_db_data/drugbank_parsed.txt", sep="\t", row.names=FALSE)
+write.table(drugbank_df, file="data/00_reference/drugbank_parsed.txt", sep="\t", row.names=FALSE)
 
 # remove data I don't want! nutraceuticals + allergens
 drugbank_groups <- separate_rows(drugbank_df, group, sep="\\|")
@@ -42,4 +42,4 @@ drugbank_no_nutra <- filter(drugbank_groups, group!="nutraceutical" & !(dbID %in
 # --- CONSTRUCT DRUGBANK VOCABULARY --- #
 drug_name_syn <- createNameSynVocab(drugbank_no_nutra, "dbID")
 
-write.table(drug_name_syn, file="data/00_db_data/drugbank_vocab_no_nutra.txt", sep="\t", row.names=FALSE)
+write.table(drug_name_syn, file="data/00_reference/drugbank_vocab_no_nutra.txt", sep="\t", row.names=FALSE)

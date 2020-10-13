@@ -11,7 +11,7 @@
 import xml.etree.ElementTree as ET
 import json
 
-drugBankFile = "data/00_db_data/DrugBank.xml" # TODO add to utils
+drugBankFile = "data/00_reference/DrugBank.xml" # TODO add to utils
 tree = ET.parse(drugBankFile) # slowest step
 root = tree.getroot()
 treeDrugs = root.findall("{http://www.drugbank.ca}drug")
@@ -80,6 +80,6 @@ for drug in treeDrugs:
 	drug_data.append(drug_info)
 
 # json dump the whole thing
-with open("data/00_db_data/drugbank_info.json", 'w') as f:
+with open("data/00_reference/drugbank_info.json", 'w') as f:
 	drug_str = json.dumps(drug_data)
 	f.write(drug_str)

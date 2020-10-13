@@ -1,13 +1,15 @@
+# 
+# //TODO - move this cleaning step to later!
+
+
 require('tidyverse')
 require('data.table')
 
-# look at this: http://metasra.biostat.wisc.edu/static/publication_datasets/cvcl_mappings.json
-# ATCC cell lines?
 
 PUNCT.STR <- "[-|,|\\.|/|#|_|(|)|+|;|:|\t]"
 PUNCT.STR.SPC <- "[-|,|\\.|/|#|_|(|)|+|;|:|\t| ]"
 
-cell_info_df <- fread("../labeling/geo2drug/data/00_db_data/cellosaurus_df_v2.txt", data.table=FALSE)
+cell_info_df <- fread("data/00_reference/cellosaurus_df_v2.txt", data.table=FALSE)
 
 cell_dat <- cell_info_df %>% 
   select(cl, primary_accession, synonyms, atcc_acc) %>%
@@ -71,4 +73,4 @@ other_discard <- c("spindle", "werner", "plate", "dcis", "endo", "smith", "kawas
                    "lima", "star", "la bel", "carb", "scar")
 cell_df3 <- cell_df2 %>% filter(!cl %in% c(discard, discard_mg, other_discard))
                      
-cell_df3 %>% write_csv("data/00_db_data/cell_line/cell_syn_punct_df.csv")
+cell_df3 %>% write_csv("data/00_reference/cell_line/cell_syn_punct_df.csv")

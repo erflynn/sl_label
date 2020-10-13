@@ -17,8 +17,8 @@ cl_list = root.find("cell-line-list")
 cls = cl_list.findall("cell-line") # 118785
 cl_dict = {} # dictionary for holding output
 
-# to look at these we need examples, to get the examples, we need the accession
-
+## to look at these we need examples, to get the examples, we need the accession
+## use this for debugging
 # acc_list = []
 # for cl in cls:
 #   accs = cl.find("accession-list").findall("accession")

@@ -68,7 +68,7 @@ kept_s <- rnaseq_s %>%
 length(setdiff(kept_s$sample_acc,unique(rnaseq_dat$sample_acc))) # 9232
 length(intersect(kept_s$sample_acc,unique(rnaseq_dat$sample_acc))) # 232459
 
-head(setdiff(kept_s$sample_acc,unique(rnaseq_dat$sample_acc)))
+head(setdiff(kept_s$sample_acc, unique(rnaseq_dat$sample_acc)))
 # why are these missing? are they missing in the metadata?
 # XX fraction are missing
 # YY fraction overlap w the MetaSRA samples that are missing in this data?
