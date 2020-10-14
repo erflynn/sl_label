@@ -1,7 +1,11 @@
-# grabs the metadata
+# 02_get_sample_list.R
+# E Flynn
+# Last updated: 10/13/2020
+#
+# grabs the refine-bio metadata
 # removes rnaseq samples from the compendia
-# performs filtering, checks
-# constructs the "list_samples.csv"
+# 
+# constructs the "list_samples.csv", "list_studies.csv"
 
 require('data.table')
 require('tidyverse')
@@ -68,8 +72,10 @@ sample_metadata <-base_df %>%
   bind_rows() %>% 
   addSrcCol(sample_acc)
 
-sample_metadata %>%
-  write_csv("data/01_sample_lists/list_samples.csv")
+sample_metadata2 <- sample_metadata %>%
+  filter(src != "SRA" | (src=="SRA" & data_type=="rnaseq"))
+stopifnot(nrow(sample_metadata2)==length(unique(sample_metadata2$sample_acc)))
+
 
 # put together study metadata
 study_metadata <- base_df %>%
@@ -78,8 +84,12 @@ study_metadata <- base_df %>%
   bind_rows() %>% 
   addSrcCol(study_acc)
 
-study_metadata %>%
-  write_csv("data/01_sample_lists/list_studies.csv")
+study_metadata2 <- study_metadata %>%
+  filter(src != "SRA" | (src=="SRA" & data_type=="rnaseq"))
+
+# unique id = study/organism 
+study_metadata2 %>% distinct(study_acc, organism) %>% nrow() == nrow(study_metadata)
+
 
 
 # put together sample/study mapping
@@ -93,73 +103,33 @@ sample_to_study <- base_df %>%
   bind_rows() %>% 
   addSrcCol(sample_acc)
 
-sample_to_study %>%
-  write_csv("data/01_sample_lists/sample_to_study.csv")
+sample_to_study2 <- sample_to_study %>%
+  filter(src != "SRA" | (src=="SRA" & data_type=="rnaseq")) 
 
+# row id: sample, study, organism
+stopifnot(sample_to_study2 %>% distinct(sample_acc, study_acc, organism) %>% nrow()==nrow(sample_to_study2))
 # ------------------------------------------------------- #
 
-# //TODO double check assumptions abt overlaps in coverage
+# assumptions:
+# 1. all studies are in samp_to_study
+stopifnot(length(setdiff(study_metadata2$study_acc, sample_to_study$study_acc))==0)
 
+# 2. all samples are in samp_to_study
+stopifnot(length(setdiff(sample_metadata2$sample_acc, sample_to_study$sample_acc))==0)
 
+# 3. all SRA samples in the compendia are also in RNA-seq
+rnaseq_in_compendia <- sample_metadata %>% filter(src == "SRA" & data_type=="microarray")
+rnaseq_samples <- sample_metadata %>% filter(data_type=="rnaseq")
+stopifnot(length(setdiff(rnaseq_in_compendia$sample_acc, rnaseq_samples$sample_acc))==0)
 
-# # put it all together in one file
-# human_compendia <- loadSampleMetadata("human", "microarray")
-# mouse_compendia <- loadSampleMetadata("mouse", "microarray")
-# human_rnaseq <- loadSampleMetadata("human", "rnaseq")
-# mouse_rnaseq <- loadSampleMetadata("mouse", "rnaseq")
-# 
-# 
-# # remove the RNA-seq samples from the microarray files
-# human_rnaseq_in_compendia <- human_compendia %>% 
-#   filter(str_detect(sample_acc, "^[E|D|S]RR"))
-# mouse_rnaseq_in_compendia <- mouse_compendia %>% 
-#   filter(str_detect(sample_acc, "^[E|D|S]RR"))
-# print(nrow(human_rnaseq_in_compendia))
-# print(nrow(mouse_rnaseq_in_compendia))
-# 
-# human_microarray <- human_compendia %>%
-#   filter(!str_detect(sample_acc, "^[E|D|S]RR"))
-# mouse_microarray <- mouse_compendia %>%
-#   filter(!str_detect(sample_acc, "^[E|D|S]RR"))
-# print(nrow(human_microarray))
-# print(nrow(mouse_microarray))
-# 
-# print(nrow(human_rnaseq))
-# print(nrow(mouse_rnaseq))
-# 
-# # make sure none of the rnaseq samples in compendia are "new"
-# stopifnot(length(setdiff(human_rnaseq_in_compendia$sample_acc, human_rnaseq$sample_acc))==0)
-# stopifnot(length(setdiff(mouse_rnaseq_in_compendia$sample_acc, mouse_rnaseq$sample_acc))==0)
-# 
-# # put everything together
-# sample_list <- map_df(list(human_microarray, mouse_microarray, 
-#                            human_rnaseq, mouse_rnaseq), bind_rows)
-# 
-# 
-# 
-# # ---- grab the study metadata ---- #
-# 
-# 
-# # ---- put together study list ---- #
-# # study, organism, data_type, resource
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# study_metadata 
-# 
-# 
-# # list of rnaseq studies
-# # list of GEO
-# # list of AE
-# 
-# 
-# # --- put together exp-to-sample list --- #
-# # study, sample, organism, data_type
-# 
+# -------------- #
+# write it out
+sample_metadata2 %>%
+  write_csv("data/01_sample_lists/list_samples.csv")
 
+study_metadata2 %>%
+  write_csv("data/01_sample_lists/list_studies.csv")
 
+sample_to_study2 %>%
+  write_csv("data/01_sample_lists/sample_to_study.csv")
 
