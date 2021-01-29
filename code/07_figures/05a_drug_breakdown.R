@@ -27,7 +27,7 @@ my.cols6 <- c (my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
 # --- construct the data frame --- #
 # how we want the data formatted:
 # organism | data_type | study | study_type | drug | drug_class
-comb_metadata <- read_csv("data/01_metadata/combined_human_mouse_meta.csv", col_types="cccccccdld")
+comb_metadata <- read_csv("data/data_old/01_sample_lists/combined_human_mouse_meta.csv", col_types="cccccccdld")
 by_study <- read_csv("data/study_sex_lab.csv")
 
 # load drugbank data 
@@ -425,6 +425,8 @@ sex_breakdown_drugs <- all_no_cl %>%
               names_from="study_sex", values_from="study_acc") %>%
   arrange(organism, name) 
 
+head(sex_breakdown_drugs)
+
 sex_breakdown_drugs2 <- sex_breakdown_drugs %>%
   group_by(organism, name, class) %>%
   mutate(across(c(`mixed sex`, `male only`, `female only`), 
@@ -453,7 +455,7 @@ ggsave("figures/paper_figs/sex_breakdown_drugs.png")
 cancer_drugs <- study_db2 %>% filter(class=="L") 
 
 
-sample_source <- read_csv("data/sample_source_type.csv") %>%
+sample_source <- read_csv("data/data_old/sample_source_type.csv") %>%
   select(acc, source_type)
 
 stud_tiss <- comb_metadata %>% select(sample_acc, study_acc) %>%

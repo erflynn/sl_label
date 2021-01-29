@@ -25,7 +25,7 @@ my.cols3 <- c (my.l[3],my.l[2], my.l[8])
 my.cols4 <- c (my.l[3],my.l[4],my.l[2], my.l[8])
 my.cols6 <- c (my.l[3], blues[4],my.l[4],oranges[4], my.l[2], my.l[8])
 
-comb_metadata3 <- read_csv("data/01_metadata/combined_human_mouse_meta_v2.csv", "cccccccdld")
+comb_metadata3 <- read_csv("data/data_old/01_sample_lists/combined_human_mouse_meta.csv", col_types= "cccccccdld")
 
 
 # expression data QC + breakdown
@@ -182,6 +182,8 @@ ggsave("figures/paper_figs/figs1_sample_alluvial.png")
 
 # study level
 study_flow_freq_counts <- by_study2 %>%
+  mutate(organism=toupper(organism)) %>%
+  mutate(data_type=ifelse(data_type=="rnaseq", "RNA-seq", "Microarray")) %>% 
   mutate(study_sex=as.character(study_sex)) %>%
   mutate(study_sex=case_when( # for easier vis!
     (label_type=="metadata" & study_sex=="mostly male") ~ "mixed sex",
@@ -216,7 +218,7 @@ ggplot(study_flow_freq_counts,
   scale_x_discrete(expand = c(.1, .1)) +
   geom_flow() +
   geom_stratum(alpha = .5) +
-  geom_text(stat = "stratum", size = 2.5) +
+  #geom_text(stat = "stratum", size = 4) +
   xlab("Label source")+ylab("Number of studies")+
   theme_bw() + theme( panel.grid.major = element_blank(),
                       panel.grid.minor = element_blank()) + 

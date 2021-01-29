@@ -1,0 +1,656 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r}
+require('tidyverse')
+require('ggalluvial')
+require('GEOmetadb')
+require(scales)
+
+options(stringsAsFactors = FALSE)
+formattedList <- function(my_list){
+  paste(unique(my_list), collapse="\', \'")
+}
+
+```
+
+Accuracy metrics 
+```{r}
+human <- read.csv("../../data/human_metadata2.csv")
+mouse <- read.csv("../../data/mouse_metadata2.csv")
+rat <- read.csv("../../data/rat_metadata2.csv")
+
+
+## get the study level labels 
+h_map <- read.csv("../../data/human_exp_to_sample.csv")
+m_map <- read.csv("../../data/mouse_exp_to_sample.csv")
+r_map <- read.csv("../../data/rat_exp_to_sample.csv")
+## clean up the metadata sex labels
+
+```
+
+Summarize to study level
+
+
+
+
+alluvial diagram
+```{r}
+# con <- dbConnect(SQLite(), "../labeling/GEOmetadb.sqlite")
+# human_gse_gsm <- dbGetQuery(con, sprintf("SELECT gse, gsm FROM gse_gsm WHERE gsm IN ('%s');", 
+#                                    formattedList(human$acc)))
+# mouse_gse_gsm <- dbGetQuery(con, sprintf("SELECT gse, gsm FROM gse_gsm WHERE gsm IN ('%s');", 
+#                                    formattedList(mouse$acc)))
+# dbDisconnect(con)
+human_gse_gsm <- h_map %>% rename(gse=study_acc, gsm=sample_acc)
+mouse_gse_gsm <- m_map %>% rename(gse=study_acc, gsm=sample_acc)
+rat_gse_gsm <- r_map %>% rename(gse=study_acc, gsm=sample_acc)
+```
+
+```{r}
+alluvPlotSample <- function(ds){
+  flow_freq_counts <- ds %>% 
+  ungroup() %>% 
+  rename(metadata=text_sex, expression=expr_sex) %>%
+  group_by(metadata, expression) %>% 
+  mutate(Freq=n()) %>% 
+  select(-gsm) %>% 
+  unique() %>%
+  ungroup() %>%
+  mutate(row_id=1:n()) %>%
+  gather(key="labeling_method", value="sex", -Freq, -row_id) %>%
+  mutate(row_id=as.factor(row_id), 
+         labeling_method=factor(labeling_method, levels=c("metadata", "expression")),
+         sex=as.factor(sex)) %>%
+  unique() 
+
+ggplot(flow_freq_counts,
+       aes(x = labeling_method, 
+           stratum = sex, alluvium = row_id,
+           y = Freq,
+           fill = sex, label = sex)) +
+  scale_x_discrete(expand = c(.1, .1)) +
+  geom_flow() +
+  geom_stratum(alpha = .5) +
+  geom_text(stat = "stratum", size = 3) +
+  xlab("Label source")+ylab("Number of samples")+
+  theme_bw() + theme( panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank()) + 
+  theme(legend.position = "none") + 
+  scale_y_continuous(labels = comma)
+}
+
+
+###
+alluvPlotStudy <- function(ds){
+  large_study <- ds %>% 
+    mutate(text_sex=ifelse(text_sex %in% c("unknown", "mixed"), NA, text_sex)) %>%
+    rename(metadata=text_sex, expression=expr_sex) %>%
+    gather(key="labeling_method", value="sex", -gse, -gsm) %>%
+    group_by(gse, labeling_method) %>%
+    summarize(num_samples=n(),
+              num_f=sum(sex=="female"),
+              num_m=sum(sex=="male")) %>%
+    mutate(study_type= case_when(
+      (is.na(num_f) & is.na(num_m)) ~ "unlabeled",
+      (!is.na(num_f) & !is.na(num_m) & num_f/num_samples > 0.8 & num_m > 0 ) ~ "mostly-female",
+      (!is.na(num_f) & !is.na(num_m) & num_m/num_samples > 0.8 & num_f > 0 ) ~ "mostly-male",
+      (!is.na(num_f) & !is.na(num_m) & num_f > 0 & num_m > 0 ) ~ "mixed",
+      (!is.na(num_f) & num_f > 0 ) ~ "female-only",
+      (!is.na(num_m) & num_m > 0 ) ~ "male-only")) %>%
+    mutate(freq=1) %>% 
+    ungroup(gse) %>%  
+    mutate(study_type=factor(study_type, 
+                             levels=c("female-only", "mostly-female", "mixed", "mostly-male", "male-only", "unlabeled")), 
+           labeling_method=factor(labeling_method, 
+                                  levels=c("metadata", "expression")), 
+           gse=as.factor(gse)) %>% 
+    rename(study=gse) %>%
+    rename(sex=study_type)
+
+
+ggplot(large_study,
+       aes(x = labeling_method, 
+           stratum = sex, 
+           alluvium = study,
+           y = freq,
+           fill = sex, label = sex)) +
+  scale_x_discrete(expand = c(.1, .1)) +
+  geom_flow() +
+  geom_stratum(alpha = .5) +
+  geom_text(stat = "stratum", size = 3) +
+  xlab("Label source")+ylab("Number of studies")+
+  theme_bw() + theme( panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank()) + 
+  theme(legend.position = "none") 
+
+}
+
+
+
+```
+
+
+What is the sex breakdown overall before and after?
+```{r}
+# sample level
+rat_alt <- read.csv("../../data/01_metadata/rat_microarray_metadata_sex.csv") %>% unique()
+
+mouse_alt <- read.csv("../../data/01_metadata/mouse_microarray_metadata_sex.csv") %>% unique()
+
+human_alt <- read.csv("../../data/01_metadata/human_microarray_metadata_sex.csv") %>% unique()
+
+df <- bind_rows(rat_alt %>% mutate(organism="rat"), mouse_alt %>% mutate(organism="mouse"), human_alt %>% mutate(organism="human"))
+df2 <- df %>% group_by(organism, mapped_sex) %>% summarize(n_per_group=n()) %>% ungroup()  %>% group_by(organism) %>% mutate(n_tot=sum(n_per_group)) %>% group_by(mapped_sex) %>% mutate(percent=n_per_group/n_tot) %>% ungroup() %>%
+  rename(sex=mapped_sex) %>%
+  mutate(sex=factor(sex, levels=c("female", "mixed", "male", "unknown")))
+ggplot(df2, aes(x=organism, y=percent))+geom_bar(aes(fill=sex), stat="identity") + 
+  ylab("fraction") #, stat="count")
+
+human_alt %>% head()
+human2 <- left_join(human, human_alt, by=c("sex"="annot_sex"))
+human3 <- human2 %>%
+  mutate(text_sex=case_when(is.na(sex) | sex=="" ~ "unknown",
+                            sex=="female" ~ "female",
+                            sex=="male" ~ "male",
+                            TRUE ~ alt_annot),
+         sex_lab=ifelse(is.na(sex_lab), "unknown", sex_lab)) %>%
+  rename(expr_sex=sex_lab, gsm=acc) %>%
+    select(gsm, expr_sex, text_sex)
+
+alluvPlotSample(human3)
+
+mouse_alt <- read_csv("mouse_alt_sex_annot.csv")
+mouse2 <- left_join(mouse, mouse_alt, by=c("sex"="annot_sex"))
+mouse3 <- mouse2 %>%
+  mutate(text_sex=case_when(is.na(sex) | sex=="" ~ "unknown",
+                            sex=="female" ~ "female",
+                            sex=="male" ~ "male",
+                            TRUE ~ alt_annot),
+         sex_lab=ifelse(is.na(sex_lab), "unknown", sex_lab)) %>%
+  rename(expr_sex=sex_lab, gsm=acc) %>%
+    select(gsm, expr_sex, text_sex)
+
+alluvPlotSample(mouse3)
+
+rat_alt <- read_csv("rat_alt_sex_annot.csv")
+rat2 <- left_join(rat, rat_alt, by=c("sex"="annot_sex"))
+rat3 <- rat2 %>%
+  mutate(text_sex=case_when(is.na(sex) | sex=="" ~ "unknown",
+                            sex=="female" ~ "female",
+                            sex=="male" ~ "male",
+                            TRUE ~ alt_annot),
+         sex_lab=ifelse(is.na(sex_lab), "unknown", sex_lab)) %>%
+  rename(expr_sex=sex_lab, gsm=acc) %>%
+    select(gsm, expr_sex, text_sex)
+
+alluvPlotSample(rat3)
+
+
+# study level
+human_study <- human_gse_gsm %>% left_join(human3)
+mouse_study <- mouse_gse_gsm %>% left_join(mouse3)
+rat_study <- rat_gse_gsm %>% left_join(rat3)
+
+human_large <- human_study %>% group_by(gse) %>% count() %>% filter(n>=8)
+mouse_large <- mouse_study %>% group_by(gse) %>% count() %>% filter(n>=8)
+rat_large <- rat_study %>% group_by(gse) %>% count() %>% filter(n>=8)
+alluvPlotStudy(human_study %>% filter(!is.na(expr_sex)) %>% semi_join(human_large)) 
+
+alluvPlotStudy(mouse_study %>% filter(!is.na(expr_sex)) %>% semi_join(mouse_large)) 
+
+alluvPlotStudy(rat_study %>% filter(!is.na(expr_sex)) %>% semi_join(rat_large)) 
+
+
+```
+
+Remove cell line
+```{r}
+# way (1) <--- using our annot
+cell_annot <- read.table("../labeling/geo2drug/data/02_labeled_data/cell_line_mapped_gse.txt", 
+                         header=TRUE)
+
+h_cell <- human_study %>% left_join(cell_annot)
+m_cell <- mouse_study %>% left_join(cell_annot)
+r_cell <- rat_study %>% left_join(cell_annot)
+
+h_cell2 <- h_cell %>% filter(!is.na(expr_sex)) %>% select(gse, gsm, cell_line, text_sex, expr_sex) %>% semi_join(human_large)
+m_cell2 <- m_cell %>% filter(!is.na(expr_sex)) %>% select(gse, gsm, cell_line, text_sex, expr_sex) %>% semi_join(mouse_large)
+r_cell2 <- r_cell %>% filter(!is.na(expr_sex)) %>% select(gse, gsm, cell_line, text_sex, expr_sex) %>% semi_join(rat_large)
+alluvPlotStudy(h_cell2 %>% filter(cell_line)) # 385914 out of 430119
+alluvPlotStudy(h_cell %>% filter(!cell_line & !is.na(expr_sex)) %>% select(gse, gsm, text_sex, expr_sex) %>% semi_join(human_large))
+
+alluvPlotStudy(m_cell %>% filter(cell_line & !is.na(expr_sex)) %>% select(gse, gsm, text_sex, expr_sex) %>% semi_join(mouse_large)) # 385914 out of 430119
+alluvPlotStudy(m_cell %>% filter(!cell_line & !is.na(expr_sex)) %>% select(gse, gsm, text_sex, expr_sex) %>% semi_join(mouse_large))
+
+# how do the cell_line samples match annotations???
+
+
+
+
+# way (2) <--- their annot
+human %>% 
+  select(acc, cl_line, sex_lab) %>%
+  filter(!is.na(sex_lab)) %>%
+  mutate(cell_line=(!is.na(cl_line))) %>%
+  group_by(cell_line, sex_lab) %>%
+  count()
+
+
+mouse %>% 
+  select(acc, cl_line, sex_lab) %>%
+  filter(!is.na(sex_lab)) %>%
+  mutate(cell_line=(!is.na(cl_line))) %>%
+  group_by(cell_line, sex_lab) %>%
+  count() 
+
+cl_frac <- do.call(rbind, list(h_cell2 %>% mutate(organism="human"),
+                               m_cell2 %>% mutate(organism="mouse"),
+                               r_cell2 %>% mutate(organism="rat"))) %>% 
+  filter(!is.na(cell_line)) %>%
+  group_by(organism, cell_line, expr_sex) %>%
+  count() %>%
+  ungroup(expr_sex) %>% group_by(organism, cell_line) %>%
+  mutate(num_tot=sum(n)) %>%
+  ungroup() %>%
+  mutate(cell_line=ifelse(cell_line==FALSE,"tissue", "cell_line" )) %>%
+  mutate(frac_tot=n/num_tot)
+  
+ggplot(cl_frac, aes(x=cell_line, y=frac_tot))+geom_bar(aes(fill=expr_sex), stat="identity")+facet_wrap(.~organism)+xlab("sample source")+ylab("fraction of samples")
+
+
+```
+
+
+
+
+HC accuracy
+```{r}
+# from /scratch/users/erflynn/sex_labeling/geo_pipeline/data/10_oligo/human/02_keep_labels
+# my.f <- list.files()
+# res <- do.call(rbind, lapply(my.f, read_csv))
+# res %>% write_csv("../all_sl_methods.csv")
+human_compare <- read_csv("data/human_sl_compare.csv")
+mouse_compare <- read_csv("data/mouse_sl_compare.csv")
+
+
+human_hc <- human_compare %>% filter(!is.na(text_sex) & massir_sex==text_sex | toker_sex==text_sex)
+nrow(human_hc) / (human_compare %>% filter(!is.na(text_sex)) %>% nrow()) # 79.9%
+study_1_mis <- human_compare %>% left_join(human %>% select(acc, sex_lab), by=c("gsm"="acc"))%>% filter(!is.na(text_sex)) %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% mutate(expr_match=(massir_sex==text_sex | toker_sex==text_sex | sex_lab==text_sex)) %>%
+  group_by(study_acc) %>% filter(!is.na(expr_match)) %>% summarize(n=n(), num_mismatch=(sum(!expr_match, na.rm=TRUE)), num_match=sum(expr_match, na.rm=TRUE)) %>%
+  filter(n>1 & num_mismatch >1)
+sum(study_1_mis$num_mismatch)/sum(study_1_mis$num_match+study_1_mis$num_match) # 6.9%
+
+human_hc2 <- human_hc %>% select(gsm, text_sex) %>% rename(hc_sex=text_sex)
+human_hc3 <- human_hc2 %>% left_join(human, by=c("gsm"="acc"))
+human_hc4 <- human_hc3 %>% filter(!is.na(sex_lab)) %>% select(gsm, hc_sex, sex_lab) %>% rename(expr_sex=sex_lab)
+table(human_hc4$hc_sex,human_hc4$expr_sex )
+sum(human_hc4$hc_sex==human_hc4$expr_sex)/nrow(human_hc4) # 97.3%
+
+
+mouse_hc <- mouse_compare %>% filter(!is.na(text_sex) & massir_sex==text_sex | toker_sex==text_sex)
+mouse_hc2 <- mouse_hc %>% select(gsm, text_sex) %>% rename(hc_sex=text_sex)
+mouse_hc3 <- mouse_hc2 %>% left_join(mouse, by=c("gsm"="acc"))
+mouse_hc4 <- mouse_hc3 %>% filter(!is.na(sex_lab)) %>% select(gsm, hc_sex, sex_lab) %>% rename(expr_sex=sex_lab)
+table(mouse_hc4$hc_sex,mouse_hc4$expr_sex )
+sum(mouse_hc4$hc_sex==mouse_hc4$expr_sex)/nrow(mouse_hc4) # 95.5%
+
+```
+
+Single-sex accuracy
+```{r}
+ss_human <- read_csv("../labeling/geo2drug/data/01_sample_lists/human_single_sex_samples.csv")
+
+ss_human2 <- ss_human %>% 
+  left_join(human, by=c("gsm"="acc")) %>% 
+  filter(!is.na(sex_lab)) %>% 
+  select(gsm, text_sex, sex_lab) %>% 
+  rename(expr_sex=sex_lab)
+table(ss_human2$text_sex,ss_human2$expr_sex )
+sum(ss_human2$text_sex==ss_human2$expr_sex)/nrow(ss_human2) # 90.3%
+
+```
+
+
+Manual accuracy
+```{r}
+manual_labels <- read_tsv("../labeling/data/manual/geo_manual_labels_jdw.tsv")
+manual2 <- manual_labels %>% 
+  filter(gender %in% c("F", "M")) %>%
+  mutate(manual_sex=ifelse(gender=="F", "female", "male")) %>%
+  rename(gsm=X1)
+
+manual3 <- manual2 %>% inner_join(human, by=c("gsm"="acc")) %>%
+  select(gsm, manual_sex, sex_lab) %>%
+  filter(!is.na(sex_lab)) %>% 
+  rename(expr_sex=sex_lab)
+table(manual3$manual_sex,manual3$expr_sex )
+sum(manual3$manual_sex==manual3$expr_sex)/nrow(manual3) # 94.2%
+
+```
+
+Cellosaurus sex breakdown / comparison
+```{r}
+require('data.table')
+cell_lab <- fread("../labeling/geo2drug/data/00_db_data/cellosaurus_df.txt", data.table=FALSE)
+cl_sex <- cell_lab %>% mutate(accession=tolower(accession), annot_sex=tolower(sex)) %>% select(accession, annot_sex) 
+h_cl_sex <- h_cell %>% filter(!is.na(accession)) %>% separate_rows(accession, sep=",") %>% left_join(cl_sex) %>%
+  mutate(annot_sex=ifelse(annot_sex == "" | annot_sex=="sex unspecified", "no_annot", annot_sex))
+table(h_cl_sex$annot_sex, h_cl_sex$expr_sex)
+sum(h_cl_sex$annot_sex== h_cl_sex$expr_sex)/nrow(h_cl_sex %>% filter(annot_sex!="no_annot"))
+counts_cl_sex <- h_cl_sex %>% 
+  filter(annot_sex != "no_annot") %>% 
+  select(gse, accession, annot_sex, expr_sex) %>%
+  group_by(gse, accession, annot_sex) %>%
+  summarize(num_samples=n(),  
+            num_correct=sum(expr_sex==annot_sex), num_incorrect=sum(expr_sex!=annot_sex)) %>%
+  mutate(frac_incorrect=num_incorrect/num_samples) %>%
+  arrange(desc(frac_incorrect))
+
+counts_cl_sex %>% arrange(desc(num_incorrect))
+
+table(counts_cl_sex$frac_incorrect==1) # 107
+table(counts_cl_sex$frac_incorrect==0) # 327
+
+counts_cl_sex %>% filter(frac_incorrect==1) %>% arrange(desc(num_incorrect))
+
+
+cell_annot %>% 
+  filter(gse=="GSE27211")
+
+cell_annot %>% 
+  filter(gse=="GSE73935")
+
+h_cell %>% filter(gse=="GSE27211") %>% select(gsm, expr_sex) %>% left_join(human, by=c("gsm"="acc")) %>% head()
+
+# // TODO - cell_line isn't correct! need a combo :(
+
+
+
+refine_cl_annot <- human_metadata %>% select(acc, cl_line) %>% filter(!is.na(cl_line) & cl_line!="--" & cl_line !="")
+
+counts_cl_sex %>% filter(accession=="cvcl_0302") %>% arrange(desc(num_samples)) %>% write_csv("data/cvcl_0302.csv") # 23 studies
+
+counts_cl_sex %>% filter(accession=="cvcl_0302") %>% ungroup() %>% group_by(accession, annot_sex) %>% summarize(num_studies=n(), num_samples=sum(num_samples), num_incorrect=sum(num_incorrect))
+
+
+### next step -- with cell line annot
+res2 <- read_csv("cell_line_no_trt.csv")
+human_metadata <- read.csv("data/human_metadata2.csv")
+res2.2 <- res2 %>% left_join(human_metadata %>% select(acc, sex_lab)) 
+res2.3 <- res2.2 %>% rename(expr_sex=sex_lab) %>% left_join(cl_sex) %>% mutate(incorr=(annot_sex!=expr_sex))
+table(res2.3$annot_sex==res2.3$expr_sex) # 8981 true, 1020 false
+
+res2.3 %>%  group_by(accession, incorr) %>% count() %>% arrange(desc(n)) %>% ungroup() %>% pivot_wider(id_cols=accession, names_from=incorr, values_from=n) %>% rename("num_corr"="FALSE", "num_inc"="TRUE") %>% mutate(frac_inc=num_inc/(num_corr+num_inc)) %>% arrange(desc(frac_inc))
+# HT116 and A549, LNCAP
+
+# why are HK-2 not showing up? dash matching?? :/ 
+
+# how well does entity mapping work?
+human %>% filter(! cl_line %in% c("", "--", "-", ".", "n/a") & is.na(as.numeric(cl_line)) & nchar(cl_line)>=3) %>% nrow()
+mouse %>% filter(! cl_line %in% c("", "--", "-", ".", "n/a") & is.na(as.numeric(cl_line)) & nchar(cl_line)>=3) %>% nrow()
+human_cl <- read_csv("data/human_acc_to_cl.csv") # 49875 out of 60478 = 82.5%
+mouse_cl <- read_csv("data/mouse_acc_to_cl.csv") # 3872 out of 11876 = 32.6% mapping (however, there is a lot of conflation with mouse strain vs cell line )
+
+# FIGURE TO DEMO CELL LINE LABEL SWITCHING
+human_cl_to_sex <- human_cl %>% left_join(cl_sex, by="accession") %>% left_join(human2 %>% select(acc, sex_lab) %>% rename(expr_sex=sex_lab), by=c("gsm"="acc"))
+h_cl_sex2 <- human_cl_to_sex  %>% mutate(annot_sex=ifelse(annot_sex %in% c("", "sex unspecified") | is.na(annot_sex), "unknown", annot_sex))%>% rename(text_sex=annot_sex)
+alluvPlotSample(h_cl_sex2 %>% select(gsm, text_sex, expr_sex))
+
+sw_f <- h_cl_sex2 %>% filter(text_sex=="male" & expr_sex=="female")
+sw_m <- h_cl_sex2 %>% filter(text_sex=="female" & expr_sex=="male")
+acc_cl <- h_cl_sex2 %>% select(accession, cl) %>% separate_rows(cl, sep=";") %>% unique() %>% group_by(accession) %>% top_n(1) 
+tot_counts <- h_cl_sex2 %>% filter(text_sex==expr_sex) %>% group_by(accession) %>% count() %>% rename(num_correct=n)
+
+sw_m %>% group_by(accession) %>% count() %>% left_join(acc_cl) %>% left_join(tot_counts) %>% rename(num_incorrect=n) %>%
+  mutate(num_correct=ifelse(is.na(num_correct), 0, num_correct)) %>%
+  mutate(frac_incorrect=num_incorrect/(num_correct+num_incorrect)) %>% select(accession, cl, everything()) %>% arrange(desc(frac_incorrect)) %>%
+  filter(num_incorrect > 30) %>% write_csv("sw_m.csv")
+
+sw_m_study <- sw_m %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% select(study_acc) %>% unique() # 301
+sw_f_study <- sw_f %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% select(study_acc) %>% unique() # 1066
+acc_cl_study <- h_cl_sex2 %>% filter(text_sex==expr_sex) %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% select(study_acc) %>% unique() # 3168
+
+
+
+mult_cl_study <- h_cl_sex2 %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% select(-gsm, -cl) %>% unique() %>% group_by(study_acc) %>% count() %>% filter(n >=2) %>% select(study_acc) # 1251
+mult_cl_diff_sex <- h_cl_sex2 %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% select(-gsm, -cl, -accession, -expr_sex) %>% unique() %>% group_by(study_acc) %>% count() %>% filter(n==2) %>% select(study_acc) # 411
+
+sw_m %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% group_by(study_acc) %>% count() %>% arrange(desc(n)) %>% filter(study_acc %in% mult_cl_diff_sex$study_acc)
+sw_f %>% filter(accession=="cvcl_2959") %>% left_join(h_map, by=c("gsm"="sample_acc")) %>% group_by(study_acc) %>% count() %>% arrange(desc(n))
+
+
+length(intersect(sw_m_study$study_acc, mult_cl_study$study_acc)) # 253/301
+length(intersect(sw_f_study$study_acc, mult_cl_study$study_acc)) # 566/1066
+length(intersect(sw_m_study$study_acc, mult_cl_diff_sex$study_acc)) # 69/301
+length(intersect(sw_f_study$study_acc, mult_cl_diff_sex$study_acc)) # 198/1066
+
+length(intersect(acc_cl_study$study_acc, mult_cl_diff_sex$study_acc)) # 394
+
+length(intersect(acc_cl_study$study_acc, mult_cl_study$study_acc)) # 1191
+
+chisq.test(matrix(c(253, 69, 394, 566, 198, 1191, 1066, 301, 3168), ncol=3, byrow=TRUE))
+chisq.test(matrix(c(253, 394, 1066, 3168), ncol=2, byrow=TRUE))
+chisq.test(matrix(c(69, 394, 301, 3168), ncol=2, byrow=TRUE))
+chisq.test(matrix(c(253, 69, 1066, 301), ncol=2, byrow=TRUE)) # not different
+
+ 
+my.mat <- data.frame(t(matrix(c(253, 69, 394, 566, 198, 1191, 1066, 301, 3168), ncol=3, byrow=TRUE)))
+colnames(my.mat)<- c("cell types w different sexes", "multiple cell types", "all studies")
+my.mat$source <- c("labeled m, pred f", "labeled f, pred m", "labels match")
+my.mat %>% pivot_longer(c("cell types w different sexes", "multiple cell types", "all studies"), names_to="study_type", values_to="num_studies") %>%
+  ggplot(aes(x=source, y=num_studies))+geom_bar(aes(fill=study_type), stat="identity")+ylab("Number of studies")
+
+
+gse <- getGEO("GSE70263") #cvcl_2959
+my_dat <- gse$GSE70263_series_matrix.txt.gz
+pDat2 <- pData(my_dat) %>% filter(geo_accession != "GSM1722134" )
+short_names <- sapply(pDat2$title, function(x) strsplit(x, " ")[[1]][[1]])
+expData <- exprs(my_dat)
+colnames(expData) <- pData(my_dat)$geo_accession
+expData2 <- data.frame(expData[complete.cases(expData),])
+expData2$GSM1722134 <- NULL
+dist.mat <- dist(t(expData2))
+clust <- hclust(dist.mat, method="average")
+my.lab <- pData(my_dat)$geo_accession[pData(my_dat)$geo_accession!="GSM1722134"]
+plot(clust, labels=short_names) #, labels=my.lab)
+
+ggplot(human %>% left_join(h_map, by=c("acc"="sample_acc")) %>% filter(study_acc=="GSE70263"), aes(x=pred))+geom_histogram()
+```
+
+
+Drug breakdown
+```{r}
+drugbank_dat <- read_tsv("../../../labeling/geo2drug/data/02_labeled_data/drugbank_mapped_gse.txt")
+
+require('GEOmetadb')
+con <- dbConnect(SQLite(), "../labeling/GEOmetadb.sqlite")
+
+drug_gse_gsm <- dbGetQuery(con, sprintf("SELECT gse, gsm FROM gse_gsm WHERE gse IN ('%s');", 
+                                   formattedList(drugbank_dat$gse)))
+
+dbDisconnect(con)
+drugbank_gsm <- left_join(drug_gse_gsm, drugbank_dat)
+human_drug <- drugbank_gsm %>% inner_join(human3)
+alluvPlotSample(human_drug %>% select(gsm, text_sex, expr_sex))
+alluvPlotStudy(human_drug %>% select(gse,gsm, text_sex, expr_sex))
+
+mouse_drug <- drugbank_gsm %>% inner_join(mouse3)
+alluvPlotSample(mouse_drug %>% select(gsm, text_sex, expr_sex))
+alluvPlotStudy(mouse_drug %>% select(gse,gsm, text_sex, expr_sex))
+
+rat_drug <- drugbank_gsm %>% inner_join(rat3) %>% mutate(organism="rat")
+alluvPlotSample(rat_drug %>% select(gsm, text_sex, expr_sex))
+alluvPlotStudy(rat_drug %>% select(gse,gsm, text_sex, expr_sex))
+
+comb_drug <- do.call(rbind, list(human_drug, mouse_drug, rat_drug))
+comb_drug2 <- comb_drug %>% select(gsm, expr_sex, text_sex, organism) %>% rename(metadata=text_sex, expression=expr_sex) %>% pivot_longer(cols=c("metadata", "expression"), names_to="label_source", values_to="sex") %>% mutate(label_source=factor(label_source, levels=c("metadata", "expression"))) %>% filter(sex!="mixed")
+ggplot(comb_drug2, aes(x=label_source))+geom_bar(aes(fill=sex))+
+  facet_wrap(.~organism, scales="free")+ylab("Number of samples")+xlab("Label source")
+
+```
+removing cell data
+```{r}
+drug_cl_counts <- human_drug %>% 
+  left_join(cell_annot) %>% 
+  select(gse, cell_line, expr_sex) %>% 
+  group_by(gse, cell_line) %>%
+    summarize(num_samples=n(),
+              num_f=sum(expr_sex=="female"),
+              num_m=sum(expr_sex=="male")) %>%
+    mutate(study_type= case_when(
+      (is.na(num_f) & is.na(num_m)) ~ "unlabeled",
+      (!is.na(num_f) & !is.na(num_m) & num_f/num_samples > 0.8 & num_m > 0 ) ~ "mostly-female",
+      (!is.na(num_f) & !is.na(num_m) & num_m/num_samples > 0.8 & num_f > 0 ) ~ "mostly-male",
+      (!is.na(num_f) & !is.na(num_m) & num_f > 0 & num_m > 0 ) ~ "mixed",
+      (!is.na(num_f) & num_f > 0 ) ~ "female-only",
+      (!is.na(num_m) & num_m > 0 ) ~ "male-only"))
+ggplot(drug_cl_counts, aes(x=cell_line))+geom_bar(aes(fill=study_type))
+
+m_drug_cl_counts <- mouse_drug %>% 
+  left_join(cell_annot) %>% 
+  select(gse, cell_line, expr_sex) %>% 
+  group_by(gse, cell_line) %>%
+    summarize(num_samples=n(),
+              num_f=sum(expr_sex=="female"),
+              num_m=sum(expr_sex=="male")) %>%
+    mutate(study_type= case_when(
+      (is.na(num_f) & is.na(num_m)) ~ "unlabeled",
+      (!is.na(num_f) & !is.na(num_m) & num_f/num_samples > 0.8 & num_m > 0 ) ~ "mostly-female",
+      (!is.na(num_f) & !is.na(num_m) & num_m/num_samples > 0.8 & num_f > 0 ) ~ "mostly-male",
+      (!is.na(num_f) & !is.na(num_m) & num_f > 0 & num_m > 0 ) ~ "mixed",
+      (!is.na(num_f) & num_f > 0 ) ~ "female-only",
+      (!is.na(num_m) & num_m > 0 ) ~ "male-only"))
+ggplot(m_drug_cl_counts, aes(x=cell_line))+geom_bar(aes(fill=study_type))
+
+drug_ct_cl <- rbind(m_drug_cl_counts %>% mutate(organism="mouse"), drug_cl_counts %>% mutate(organism="human"))
+drug_ct_cl_frac <- drug_ct_cl %>% 
+  group_by(organism, cell_line, study_type) %>%
+  count() %>%
+  ungroup(study_type) %>% group_by(organism, cell_line) %>%
+  mutate(num_tot=sum(n)) %>%
+  ungroup() %>%
+  mutate(cell_line=ifelse(cell_line==FALSE,"tissue", "cell_line" )) %>%
+  mutate(frac_tot=n/num_tot)
+  
+ggplot(drug_ct_cl_frac, aes(x=cell_line, y=frac_tot))+geom_bar(aes(fill=study_type), stat="identity")+facet_wrap(.~organism)+xlab("sample source")+ylab("fraction of studies")
+```
+
+
+by drug class
+```{r}
+
+atc_names <- read.delim("../labeling/geo2drug/data/deprecated/ref_data/atc_classes.txt", header=FALSE)
+
+colnames(atc_names) <- c("class", "descript")
+
+h_drug_class <- human_drug %>% 
+  select(gse, gsm, ATC, expr_sex) %>%
+  mutate(class=substr(ATC, 1, 1)) %>%
+  left_join(atc_names) %>%
+  rename(drug_class=descript)
+
+
+h_drug_class2 <- h_drug_class %>% left_join(drug_cl_counts %>% select(gse, study_type), by=c("gse")) %>%
+  mutate(study_type=ifelse(study_type %in% c("mostly-female", "mostly-male"), "mixed", study_type)) %>%
+  select(-gsm, -expr_sex) %>% unique()
+
+ggplot(h_drug_class2 %>% filter(!is.na(drug_class)), aes(x=class, fill=drug_class))+geom_histogram(stat="count")+ggtitle("ATC breakdown")+facet_grid(study_type ~ .)+theme(text = element_text(size=20))+theme_bw() + theme( panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank()) + ylab("Number of studies")+xlab("ATC class")
+
+
+# run stat tests
+ds2 <- h_drug_class2 %>% 
+  filter(!is.na(drug_class))
+count_table<- table(ds2[,c( "study_type", "class")])
+chisq.p <- lapply(colnames(count_table), function(x)
+  chisq.test(count_table[c("female-only", "male-only"),x])$p.value)
+names(chisq.p) <- colnames(count_table)
+chisq.p[chisq.p < 0.05/ncol(count_table)]
+
+lapply(chisq.p, function(x)x*ncol(count_table))
+
+
+m_drug_class <- mouse_drug %>% 
+  select(gse, gsm, ATC, expr_sex) %>%
+  mutate(class=substr(ATC, 1, 1)) %>%
+  left_join(atc_names) %>%
+  rename(drug_class=descript)
+
+neuro_count_df <- mouse_drug %>% mutate(class=substr(ATC, 1, 1)) %>% filter(class=="N") %>% 
+  select(gse, gsm, name, expr_sex) %>%
+  left_join(m_drug_cl_counts %>% select(gse, study_type), by=c("gse")) %>%
+  mutate(study_type=ifelse(study_type %in% c("mostly-female", "mostly-male"), "mixed", study_type)) %>%
+  select(-gsm, -expr_sex) %>% unique() %>% 
+  group_by(name, study_type) %>% count() %>% arrange(name, study_type) %>%
+  ungroup() %>%
+  pivot_wider(id_cols=c("name"), names_from="study_type", values_from="n") 
+  
+neuro_count_df[is.na(neuro_count_df)] <- 0
+View(neuro_count_df)
+neuro_count_df %>% write_csv("neuro_drugs.csv")
+
+m_drug_class2 <- m_drug_class %>% left_join(m_drug_cl_counts %>% select(gse, study_type), by=c("gse")) %>%
+  mutate(study_type=ifelse(study_type %in% c("mostly-female", "mostly-male"), "mixed", study_type)) %>%
+  select(-gsm, -expr_sex) %>% unique()
+
+ds2 <- m_drug_class2 %>% 
+  filter(!is.na(drug_class))
+count_table<- table(ds2[,c( "study_type", "class")])
+chisq.p <- lapply(colnames(count_table), function(x)
+  chisq.test(count_table[c("female-only", "male-only"),x])$p.value)
+names(chisq.p) <- colnames(count_table)
+lapply(chisq.p[chisq.p < 0.05/ncol(count_table)], function(x)x*ncol(count_table))
+
+
+
+
+ggplot(m_drug_class2 %>% filter(!is.na(drug_class) & !is.na(study_type)), aes(x=class, fill=drug_class))+geom_histogram(stat="count")+ggtitle("ATC breakdown")+facet_grid(study_type ~ .)+theme(text = element_text(size=20))+theme_bw() + theme( panel.grid.major = element_blank(),
+                      panel.grid.minor = element_blank()) + ylab("Number of studies")+xlab("ATC class")
+
+```
+
+How does this look by cell line?
+```{r}
+h_drug_class2 %>% 
+  inner_join(cell_annot) %>%
+  filter(!is.na(class)) %>%
+  group_by(class, cell_line, study_type) %>% 
+  count() %>%
+  filter(class=="L")
+
+cl_atc <- h_drug_class2 %>% 
+  inner_join(cell_annot) %>%
+  filter(!is.na(class)) %>%
+  group_by(class, cell_line, study_type) %>% 
+  count() 
+
+ggplot(cl_atc %>% filter(class %in% c("G", "L")), aes(x=cell_line, y=n))+geom_bar(aes(fill=study_type), stat="identity")+facet_wrap(.~class)
+
+
+
+
+m_cl_atc <- m_drug_class2 %>% 
+  inner_join(cell_annot) %>%
+  filter(!is.na(class)) %>%
+  group_by(class, cell_line, study_type) %>% 
+  count() 
+
+ggplot(m_cl_atc %>% filter(class %in% c("C", "G", "L", "N")), aes(x=cell_line, y=n))+geom_bar(aes(fill=study_type), stat="identity")+facet_wrap(.~class)
+
+```
+
+
+By time period!
+```{r}
+
+
+```
+
+
+Do we get more labels over time???

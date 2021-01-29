@@ -262,7 +262,7 @@ ggplot(sex_lab_w_source %>%
 
 # --- CELL LINE SEX LABELS --- #
 
-cell_df <- read.csv("data/00_db_data/cellosaurus_df_v2.txt") 
+cell_df <- read.csv("data/00_reference/cellosaurus_df_v2.txt", stringsAsFactors = FALSE) 
 # // TODO v3 breaks alleles, use allele_freq3
 cell_sex <- cell_df %>% 
   select(primary_accession, cl, sex, alleles) %>% 
@@ -338,17 +338,21 @@ stopifnot(length(unique(samples_cl_sl$sample_acc))==nrow(samples_cl_sl))
 
 # Table (2) - samples mapped to cell lines with sex labels
 samples_cl_sl %>% write_csv("data/cl_sex_mapped.csv")
-samples_cl_sl <- read_csv("data/cl_sex_mapped.csv")
+samples_cl_sl <- read_csv("data/data_old/cl_sex_mapped.csv")
+
 
 cl_expr <- samples_cl_sl %>% 
   filter(cl_annot_sex %in% c("female", "male") & !is.na(expr_sex)) %>%
+  group_by(cl_annot_sex) %>%
   mutate(tot=n()) %>%
-  group_by(organism,cl_annot_sex, expr_sex) %>%
+  group_by(cl_annot_sex, expr_sex) %>%
   mutate(n=n()) %>%
   select(cl_annot_sex, expr_sex, n, tot) %>%
   unique() %>%
   mutate(frac=n/tot) %>%
   ungroup()
+
+
 cl_expr # <-- this is the confusion matrix for percents that switch!
 
 
@@ -524,7 +528,11 @@ df <- cl_level_lab %>%
 stopifnot(length(unique(df$cl_acc  ))==nrow(df))
 table(df$annot_all, df$expr_sex)
 
-  
+df_male <- df %>% filter(cl_annot_sex=="male")
+
+table(df_male$expr_sex) 
+# 43.5% have at least some switching
+df_male %>% filter()  
 
 # high confidence switching
 # We define high confidence switching as a 95% CI for 
@@ -808,7 +816,7 @@ ggsave("figures/paper_figs/compare_str_fraction.png")
 head(hc_switch)
 
 study_grp <- samples_cl_sl %>%
-  semi_join(df_switch, by="cl_acc") %>%
+  #semi_join(df_switch, by="cl_acc") %>%
   separate_rows(study_acc, sep=";") %>%
   group_by(cl_acc) %>%
   group_by(cl_acc, study_acc) %>%
@@ -819,6 +827,16 @@ study_grp <- samples_cl_sl %>%
   group_by(cl_acc) %>%
   mutate(num_studies=n()) %>%
   ungroup()
+
+study_grp_additional <- study_grp %>% 
+  distinct(cl_acc, num_studies) %>%
+  filter(num_studies >= 5) %>% 
+  left_join(cl_level_lab %>% 
+              select(-frac_f, -frac_m, -frac_unknown, -expr_sex)) %>%
+  filter(cl_annot_sex=="male") %>%
+  filter(!is.na(avg_p_male))  %>%
+  mutate(num_s=num_f+num_m) %>%
+  filter(num_s >=3)
 
 cls <- study_grp %>% filter(num_studies > 3, num_samples > 3) %>% 
   distinct(cl_acc) %>% pull()

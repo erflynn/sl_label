@@ -14,11 +14,47 @@ require('tidyverse')
 require('RColorBrewer')
 blues <- brewer.pal(5,name="Blues")
 
+sample_meta <- read_csv("data/01_sample_lists/rb_metadata/human_microarray_sample_metadata.csv",
+                        col_types="cccccdcccccdd")
+
+
+comb_metadata <- read_csv("data/sample_metadata_filt.csv", col_types="cccccdldcc")
+
+# where does the platform data come from?
+library('GEOmetadb')
+con <- dbConnect(SQLite(), "../GEOmetadb.sqlite")
+dbGetQuery(con, "SELECT gsm.gsm,gpl FROM gsm JOIN gse_gsm ON 
+           gse_gsm.gsm=gsm.gsm WHERE gse IN ('GSE12039');")
+dbGetQuery(con, "SELECT gse,gpl FROM gse_gpl WHERE gse IN  ('GSE12039');")
+
+# TODO - have we removed the problem platforms?
+#gse <- read_tsv("data/01_sample_lists/rb_metadata/gse12039.txt", col_names=F)
+#gse[,c("X1", "X10")]
+
+plat_list <- comb_metadata %>% 
+  distinct(platform) %>%    
+  mutate(full_str=platform) %>%
+  mutate(platform=str_extract(platform, "(?<=\\().+(?=\\)$)")) %>%
+  group_by(full_str) %>%
+  mutate(platform=ifelse(
+    str_detect(platform, "\\("), 
+    str_split(platform, pattern="\\(")[[1]][[2]],
+    platform)) %>%
+  ungroup()
+plat_list %>% group_by(platform) %>% 
+  summarize(n=n(), full_str=paste(full_str, collapse=";")) %>% 
+  filter(n>1) %>% View()
+
+comb_metadata2 <- comb_metadata %>% 
+  rename(full_str=platform) %>%
+  left_join(plat_list, by=c("full_str"))
+
+nrow(extended_test2) # 30559
 
 platAcc <- function(my_organism, my_data_type){
-  extended_test2 <- read_csv(sprintf("data/%s_%s_extended_test.csv", 
+  extended_test2 <- read_csv(sprintf("data/data_old/%s_%s_extended_test.csv", 
                                      my_organism, my_data_type))
-  extended_test3 <- extended_test2 %>% left_join(comb_metadata %>% 
+  extended_test3 <- extended_test2 %>% left_join(comb_metadata2 %>% 
                                  distinct(study_acc, platform))
   df <- extended_test3 %>% filter(!is.na(metadata_sex), !is.na(expr_sex), 
                                    metadata_sex %in% c("male", "female"), 
@@ -32,6 +68,8 @@ platAcc <- function(my_organism, my_data_type){
   return(df)
 }
 
+
+
 (hm_plat <- platAcc("human", "microarray"))
 (hs_plat <- platAcc("human", "rnaseq"))
 (mm_plat <- platAcc("mouse", "microarray"))
@@ -40,16 +78,16 @@ platAcc <- function(my_organism, my_data_type){
 plat_dat <- do.call(rbind, list(hm_plat, hs_plat, mm_plat, ms_plat)) %>%
   arrange(organism, data_type, desc(accuracy)) 
 
-
-
+plat_dat %>% filter(accuracy < 0.7)
 plotPlatAcc <- function(ds, plot_title){
   ds %>%
+    mutate(accuracy=ifelse(accuracy==0, 0.01, accuracy)) %>%
     arrange(desc(accuracy)) %>%
-    mutate(platform=str_extract(platform, "(?<=\\().+(?=\\))")) %>% # grab text in parens
-    group_by(platform) %>%
-    mutate(n2=1:n()) %>% # add a suffix if there are multiple w same name
-    ungroup() %>%
-    mutate(platform=ifelse(n2>1, paste(platform, n2, sep="-"), platform)) %>%
+    #mutate(platform=str_extract(platform, "(?<=\\().+(?=\\))")) %>% # grab text in parens
+    #group_by(platform) %>%
+    #mutate(n2=1:n()) %>% # add a suffix if there are multiple w same name
+    #ungroup() %>%
+    #mutate(platform=ifelse(n2>1, paste(platform, n2, sep="-"), platform)) %>%
     mutate(platform=factor(platform, levels=unique(platform))) %>%
     mutate(num_samples=case_when(
       n < 10 ~ "<10",
@@ -84,7 +122,8 @@ plotPlatAcc(mm_plat, "Mouse - Microarray")
 ggsave("figures/paper_figs/supp_plat_acc_mm.png")
 
 # write out the platform-level accuracy for a supplement
-plat_dat <- do.call(rbind, list(hm_plat, hs_plat, mm_plat, ms_plat)) %>%
+plat_dat <- do.call(rbind, 
+                    list(hm_plat, hs_plat, mm_plat, ms_plat)) %>%
   arrange(organism, data_type, desc(accuracy))  %>%
   mutate(accuracy=ifelse(is.na(accuracy), 0, accuracy)) 
 
@@ -93,7 +132,25 @@ plat_dat %>%
   rename(frac_labeled=frac_lab) %>%
   mutate(across(c(accuracy,frac_labeled), signif, 3)) %>%
   write_csv("tables/supp_plat_accuracy.csv")
+plat_dat %>% distinct(organism, platform) #66
+plat_dat %>% distinct(platform)
+nrow(plat_dat)
 
+plat_dat %>% 
+  semi_join(plat_dat %>% filter(accuracy < 0.7), by="platform") 
+
+######
+
+# 13 were not included
+missing_plat <- plat_list %>% 
+  filter(!platform %in% plat_dat$platform) %>% 
+  distinct(platform) %>%
+  filter(!platform %in% 
+           c("zebrafish", "drosophila2", "bovine", "rat2302", 
+             "Illumina_RatRef-12_V1.0"))
+
+comb_metadata2 %>% filter(platform %in% c("zebrafish", "drosophila2", "bovine", "rat2302", 
+                                          "Illumina_RatRef-12_V1.0"))
 
 # fraction of all samples tho!
 plat_counts <- comb_metadata %>% 
@@ -173,4 +230,6 @@ ggplot(plat_counts2 %>%
   xlab("fraction of all samples in platform")+
   ylab("accuracy in extended test set")
   
+# LABEL THE ONES THAT WE'RE NOT USING
+
 ggsave("figures/paper_figs/extra_plat_acc_by_size.png")

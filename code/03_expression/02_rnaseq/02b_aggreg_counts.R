@@ -12,5 +12,5 @@ stopifnot(nrow(count_dat)==length(unique(count_dat$sample_acc)))
 nrow(count_dat)
 count_dat %>% filter(count > 100000) %>% nrow()
 
-count_dat %>% write_csv(sprintf("%s/all_read_counts.csv", count_path))
+count_dat %>% write_csv(sprintf("%s/all_%s_read_counts.csv", count_path, organism))
 

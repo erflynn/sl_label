@@ -205,15 +205,18 @@ run_fold <- function(my.fold, nfolds, ngenes=300){
 
 full_res <- lapply(1:(NFOLDS), function(idx) {
   print(idx)
-    res <- lapply(c(50, 100, 200, 300, 500), function(ngenes) run_fold(idx, NFOLDS, ngenes))
-    save(res, file=sprintf("data/06_fold_dat/fold_%s_%s_%s_%s.RData", prefix,data_type, ds, idx))
+    res <- lapply(c(50, 100, 200, 300, 500), function(ngenes) 
+      run_fold(idx, NFOLDS, ngenes))
+    save(res, file=sprintf("data/06_fold_dat/fold_%s_%s_%s_%s.RData", 
+                           prefix,data_type, ds, idx))
     
     return(res)
     
 })
 #  })
 #})
-my_df <- do.call(rbind, lapply(full_res, function(x) do.call(rbind, lapply(x, function(y) y$tv))))
+my_df <- do.call(rbind, lapply(full_res, function(x) 
+  do.call(rbind, lapply(x, function(y) y$tv))))
     
        
 # fold_res <- data.frame()

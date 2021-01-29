@@ -5,7 +5,6 @@ require('HistDAWass')
 
 # ----- PART ZERO ----- #
 # define the dataset and cluster the study
-my_ds <- res0 %>% pull(cl_acc) # 87 cell lines
 
 annot_male <- df_switch %>% filter(cl_annot_sex=="male") %>% pull(cl_acc)
 
@@ -16,6 +15,7 @@ res0 <- study_grp %>%
   mutate(n=n()) %>%
   filter(n >= 5) 
 
+my_ds <- res0 %>% pull(cl_acc) # 87 cell lines
 res <- res0%>%
   group_split(cl_acc) 
 
@@ -38,11 +38,11 @@ clus_df <- cbind("cl_acc"=sapply(res, function(x) x$cl_acc[[1]]),
 
 
 study_plt <- study_grp %>% 
-  filter(cl_acc %in% clus_df$cl_acc) %>%
-  left_join(clus_df) %>%
-  left_join(df_switch %>% select(cl_acc, cl_annot_sex, cl_allele_sex, switching_category)) %>% 
-  left_join(dip_test_col) %>%
-  mutate(dip_pass=ifelse((dip_p > 0.05), "unimodal", "multimodal"))
+  filter(cl_acc %in% unique(my_ds)) #%>%
+  #left_join(clus_df) %>%
+  #left_join(df_switch %>% select(cl_acc, cl_annot_sex, cl_allele_sex, switching_category)) %>% 
+  #left_join(dip_test_col) %>%
+  #mutate(dip_pass=ifelse((dip_p > 0.05), "unimodal", "multimodal"))
 head(study_plt)
 
 study_plt %>% 
@@ -434,6 +434,19 @@ study_plt2 %>%
 #   )+
 #   theme_bw()
 
+# --- make a df to write out --- #
+study_plt2 %>% 
+  distinct(cl_acc, cl_name, median_p, median_nsamples,
+           sd_nsamples, num_studies, num_samples) %>%
+  select(-median_nsamples, -sd_nsamples) %>%
+  rename(median_p_male=median_p) %>%
+  left_join(cl_level_lab %>% select(cl_acc, cl_allele_sex, num_f, num_m, num_unknown)) %>%
+  select(cl_acc, cl_name, cl_allele_sex, everything()) %>%
+  arrange(median_p_male) %>%
+  mutate(median_p_male=round(median_p_male, 3)) %>%
+  write_csv("tables/supp_cl_1018.csv")
+  
+
 
 study_plt2 %>% 
   distinct(cl_acc, cl_name, median_p, median_nsamples,
@@ -518,9 +531,9 @@ comp_cnv <- cnv_df2 %>%
 comp_cnv_x <- comp_cnv %>% filter(CHR=="X")
 comp_cnv_y <- comp_cnv %>% filter(CHR=="Y")
 
-spearman(comp_cnv_y$median_cnv, comp_cnv_y$median_p) 
+cor(comp_cnv_y$median_cnv, comp_cnv_y$median_p) 
 # 0.774, pval=4.58 x 10**-10
-spearman(comp_cnv_x$median_cnv, comp_cnv_x$median_p) 
+cor(comp_cnv_x$median_cnv, comp_cnv_x$median_p) 
 # -0.094, pval=0.537
 
 comp_cnv %>%
