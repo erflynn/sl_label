@@ -16,25 +16,29 @@ extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
 }
 
 sampleMat <- function(sample_id, study_id){
-   sample.path <- sprintf("data/rnaseq/%s/00_infiles/%s/%s_quant.sf", 
+   sample.path <- sprintf("data/03_expression/rnaseq/%s/%s/%s_quant.sf", 
                            prefix, study_id, sample_id);
     print(sample_id);
     if (file.exists(sample.path)){
       my_dat <- read_tsv(sample.path) 
       if (!"Name" %in% colnames(my_dat)){
       	 print(sprintf("corrupted file %s", sample.path))
-	 return(NA)
+	      return(NA)
       	 #my_dat <- read.delim(sample.path, skip=1)
 	 #colnames(my_dat) <- c("Name", "Length","EffectiveLength","TPM", "NumReads")
       }
-      quant_sf <- my_dat %>% dplyr::select(Name, NumReads);
+      quant_sf <- my_dat %>% dplyr::select(Name, TPM); # should this be TPM or NumReads?
       colnames(quant_sf) <- c("gene_name", sample_id);
+      read_count <- sum(my_dat$NumReads)
+      tb <- tibble("read_count", read_count)
+      colnames(tb) <- colnames(quant_sf)
+      quant_sf2 <- quant_sf %>% bind_rows(tb)
       
       #if (sample_id==sample_list$sample_acc[[1]]){
       #  return(quant_sf)
       #}
       
-      return(quant_sf)
+      return(quant_sf2)
     } else {
       return(NA)
     }
@@ -60,7 +64,7 @@ extractStudyChunk <- function(study_id, list_samples){
 
 studyMat <- function(study_id){
    print(study_id)
-   out.path <- sprintf("data/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id)
+   out.path <- sprintf("data/03_expression/rnaseq/%s/01_study_mat/%s.csv", prefix, study_id)
    if (file.exists(out.path) &  file.info(out.path)$size!=0){
        print("file already generated")
        return(NA)
@@ -88,10 +92,10 @@ studyMat <- function(study_id){
 
 
 # read in the mapping file
-mapping <- fread(sprintf("data/01_metadata/%s_rnaseq_exp_to_sample.csv", prefix, prefix), 
-                 data.table=FALSE) %>% filter(!is.na(study_acc))
+mapping <- fread(sprintf("data/01_sample_lists/rb_metadata/%s_rnaseq_exp_to_sample.csv", prefix), 
+                 data.table=FALSE) 
 #list.studies <- unique(mapping$study_acc)
-list.studies <- list.files(sprintf("data/rnaseq/%s/00_infiles/", prefix), pattern="*RP*")
+list.studies <- list.files(sprintf("data/03_expression/rnaseq/%s/", prefix), pattern="*RP*")
 
 print(length(list.studies))
 small.list <- extractChunk(list.studies, idx, SIZE.CHUNK=500)

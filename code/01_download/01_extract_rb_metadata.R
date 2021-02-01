@@ -17,7 +17,7 @@ prefix <- args[1]
 data_type <- args[2]
 
 # ----- 0. grab metadata ------ #
-metadata_list <- fromJSON(file = sprintf("data/%s/%s/aggregated_metadata.json", data_type, prefix))
+metadata_list <- fromJSON(file = sprintf("data/03_expresion/%s/%s/aggregated_metadata.json", data_type, prefix))
 
 # ----- 1. experiment level ----- #
 list.exp <-
@@ -48,7 +48,7 @@ mapping <- exp.df2 %>%
   separate_rows(sample_acc, sep=";") %>%
   arrange(study_acc, sample_acc)
 mapping %>% 
-  write.csv(file=sprintf("%s/%s_%s_exp_to_sample.csv", OUT.DIR, prefix, data.type), 
+  write.csv(file=sprintf("%s/%s_%s_exp_to_sample.csv", OUT.DIR, prefix, data_type), 
             quote=TRUE, row.names=FALSE)
 
 

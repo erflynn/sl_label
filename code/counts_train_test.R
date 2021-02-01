@@ -6,8 +6,10 @@ exp_to_sample <- read_csv("data/01_metadata/human_exp_to_sample_counts.csv")
 
 train_df <- tibble("sample_acc"=rownames(X_train), "metadata_sex"=Y_train)
 test_df <- tibble("sample_acc"=rownames(X_test), "metadata_sex"=Y_test)
-train_df2 <- train_df %>% left_join(exp_to_sample, by="sample_acc") %>% select(study_acc, everything())
-test_df2 <- test_df %>% left_join(exp_to_sample, by="sample_acc") %>% select(study_acc, everything())
+train_df2 <- train_df %>% left_join(exp_to_sample, by="sample_acc") %>% 
+  select(study_acc, everything())
+test_df2 <- test_df %>% left_join(exp_to_sample, by="sample_acc") %>% 
+  select(study_acc, everything())
 # make sure it is one per study
 set.seed(1)
 train_df3 <- train_df2 %>% group_by(study_acc) %>% sample_n(1) %>% ungroup()

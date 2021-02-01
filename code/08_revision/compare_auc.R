@@ -16,8 +16,35 @@ auc_plot <- function(df){
     ylim(0,1)
 }
 
-hm_res <- read_csv("data/hm_alt_class.csv")
-hm_res$X1 <- NULL
+load_acc <- function(prefix){
+  hm_res <- do.call(rbind, lapply(1:6, function(x) 
+    read_csv(sprintf("data/%s_alt_class_%s.csv", prefix, x))))
+  hm_res$X1 <- NULL
+  hm_acc <- hm_res %>% distinct(acc, method) %>%
+    arrange(desc(acc))
+  return(hm_res)
+}
+
+
+
+acc_df <- do.call(rbind, 
+        list(load_acc("mr") %>% mutate(organism="mouse", data_type="RNA-seq"), 
+          load_acc("hr")%>% mutate(organism="human", data_type="RNA-seq"), 
+          load_acc("mm")%>% mutate(organism="mouse", data_type="microarray"), 
+          load_acc("hm") %>% mutate(organism="human", data_type="microarray")))
+
+acc_df2 <- acc_df %>% distinct(acc, method) %>%
+  arrange(desc(acc))
+acc_df$method <- factor(acc_df$method, levels=unique(acc_df2$method))
+acc_df %>%  
+  ggplot(aes(x=method, y=acc))+geom_boxplot()+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ylab("Accuracy")+
+  xlab("")+
+  facet_grid(data_type ~ organism)
+ggsave("figures/revision/ml_methods_comparison.png")
+
 auc_plot(hm_res)
 ggsave("figures/revision/hm_alt_models.png")
 
