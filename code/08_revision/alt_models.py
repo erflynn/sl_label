@@ -1,3 +1,7 @@
+
+# ml python3.6.1
+# ml py-pandas/1.0.3_py36
+
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, roc_curve, auc
@@ -13,6 +17,7 @@ from sklearn.ensemble import AdaBoostClassifier
 from sklearn.neural_network import MLPClassifier
 
 import sys
+from sklearn.model_selection import GroupKFold
 
 #from sklearn.model_selection import RandomizedSearchCV
 #from sklearn.model_selection import GridSearchCV
@@ -44,10 +49,20 @@ Y_train = np.loadtxt("data/05_train_df/%s_y_train.csv" %my_dat, skiprows=1, deli
 # do a different split to try these
 X = X_train
 y = Y_train
-#X_train, X_test, y_train, y_test = train_test_split(X, y, \
-# test_size=0.2, stratify = y, random_state=28)
-
+#X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, stratify = y, random_state=28)
 fold_brk = pd.read_csv("data/05_train_df/%s_folds.csv" %my_dat)
+
+group_kfold = GroupKFold(n_splits=3)
+group_kfold.get_n_splits(X, y, grps)
+for train_index, test_index in group_kfold.split(X, y, grps):
+  #print("TRAIN:", train_index, "TEST:", test_index)
+  X_train, X_valid = X[train_index], X[test_index]
+  y_train, y_valid = y[train_index], y[test_index]
+  print(X_train.shape)
+  print(X_valid.shape)
+  rf_acc = run_acc(RandomForestClassifier(), "RandomForest")
+  #print(X_train, X_test, y_train, y_test)
+
 
 for fold in range(1,7):
 	train_idx = [x!=fold for x in fold_brk['partition'].tolist()]
@@ -76,8 +91,7 @@ for fold in range(1,7):
 	 tol=0.01, solver='saga'), "Lasso")
 	rr_acc = run_acc(LogisticRegression(penalty='l2', tol=0.01, \
 		solver='saga'), "Ridge")
-	en_acc = run_acc(LogisticRegression(penalty='elasticnet', \
-	 tol=0.01, l1_ratio=0.5, solver='saga'), "ElasticNet")
+	en_acc = run_acc(LogisticRegression(penalty='elasticnet', tol=0.01, l1_ratio=0.5, solver='saga'), "ElasticNet")
 
 	# DT
 	dt_acc = run_acc(DecisionTreeClassifier(), "DecisionTree")

@@ -5,6 +5,9 @@
 #  'f_idx' (the file index) 
 #  'idx' (the index of the column within the file)
 
+# ml python/3.6.1
+# ml py-pandas/1.0.3_py36 
+
 from cmapPy.pandasGEXpress.parse import parse
 import pandas as pd
 import argparse
@@ -20,8 +23,9 @@ infile=args.infile
 out_prefix=args.outfile
 
 samples = pd.read_csv(infile)
-sample_list = samples[samples['idx']%20000!=2]
-sample_sm = sample_list[['acc', 'f_idx', 'idx']]
+# //TODO FIX THIS
+#sample_list = samples[samples['idx']%20000!=2]
+sample_sm = samples[['sample_acc', 'f_idx', 'idx']]
 list_idx = sample_sm['f_idx'].unique()
 list_idx.sort()
 
@@ -29,13 +33,17 @@ dfs = []
 
 for i in list_idx:
   idx_df = sample_sm[sample_sm['f_idx']==i]
-  df_cols = idx_df['acc'].tolist()
-  res=parse("data/microarray/%s/03_gctx/%s_%s.gctx" %(prefix, prefix, i), cid=df_cols)
+  if i==0:
+    idx_df2=idx_df[idx_df['rem_idx']!=1]
+  else:
+    idx_df2=idx_df[idx_df['rem_idx']!=0]
+  df_cols = idx_df2['sample_acc'].tolist()
+  res=parse("data/03_expression/microarray/%s/03_gctx/compendia_%s.gctx" %(prefix, i), cid=df_cols)
   dfs.append(res.data_df)
 
 # concat and write it out
 my_df = pd.concat(dfs, axis=1)
-my_df.to_csv("data/05_train_df/%s_%s_expr.csv" %(prefix, out_prefix))
+my_df.to_csv("data/04_df/%s_%s_expr.csv" %(prefix, out_prefix))
 
 
 

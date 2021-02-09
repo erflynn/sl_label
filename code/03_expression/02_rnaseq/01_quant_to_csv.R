@@ -16,7 +16,7 @@ extractChunk <- function(my.list, idx, SIZE.CHUNK=50){
 }
 
 sampleMat <- function(sample_id, study_id){
-   sample.path <- sprintf("data/03_expression/rnaseq/%s/%s/%s_quant.sf", 
+   sample.path <- sprintf("data/03_expression/rnaseq/%s/00_infiles/%s/%s_quant.sf", 
                            prefix, study_id, sample_id);
     print(sample_id);
     if (file.exists(sample.path)){

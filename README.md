@@ -2,7 +2,7 @@
 
 Initial repo for imputing sex, cell line, and other metadata labels from refine-bio data and examining the results.
 
-For now, data files are not included for space limits. This analysis focuses on human, mouse, and rat data; in principle it should be applicable to other organisms previously but this has to be examined.
+For now, data files are not included for space limits. This analysis focuses on human and mouse data; in principle it should be applicable to other organisms previously but this has to be examined.
 
 The `code/` directory is setup as follows:
 - `01_metadata/` - code for extracting metadata labels from refine-bio [c] , cleaning [p/c], and mapping them [p]

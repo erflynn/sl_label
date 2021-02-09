@@ -14,9 +14,9 @@ library('GEOmetadb')
 
 # ---- helpful functions ---- #
 loadSampleMetadata <- function(my_organism, my_data_type){
-  sample_metadata <- fread(sprintf("data/01_sample_lists/rb_metadata/%s_%s_sample_metadata.csv", 
+  sample_metadata <- read_csv(sprintf("data/01_sample_lists/rb_metadata/%s_%s_sample_metadata.csv", 
                                    my_organism, my_data_type),
-                           data.table=FALSE, stringsAsFactors=FALSE) %>% 
+                           col_types="cccccccccccc") %>% 
     as_tibble() %>%
     rename(sample_acc=acc) %>%
     select(sample_acc, platform) %>%
@@ -31,9 +31,8 @@ loadSampleMetadata <- function(my_organism, my_data_type){
 
 
 loadStudyMetadata <- function(my_organism, my_data_type){
-  study_metadata <- fread(sprintf("data/01_sample_lists/rb_metadata/%s_%s_experiment_metadata.csv", 
-                                  my_organism, my_data_type),
-                          data.table=FALSE, stringsAsFactors=FALSE) %>% 
+  study_metadata <- read_csv(sprintf("data/01_sample_lists/rb_metadata/%s_%s_experiment_metadata.csv", 
+                                  my_organism, my_data_type), col_types="cccc") %>% 
     as_tibble() %>%
     #select(study_acc, date) %>%
     mutate(organism=my_organism,
@@ -73,11 +72,8 @@ sample_metadata <-base_df %>%
   pmap(function(organism, data_type){
     loadSampleMetadata(organism, data_type)}) %>%
   bind_rows() %>% 
-  addSrcCol(sample_acc)
-
-#sample_metadata2 <- sample_metadata %>%
-#  filter(src != "SRA" | (src=="SRA" & data_type=="rnaseq"))
-#stopifnot(nrow(sample_metadata2)==length(unique(sample_metadata2$sample_acc)))
+  addSrcCol(sample_acc) %>%
+  mutate(sample_acc=str_trim(sample_acc))
 
 
 # put together study metadata
@@ -86,14 +82,7 @@ study_metadata <- base_df %>%
     loadStudyMetadata(organism, data_type)}) %>%
   bind_rows() %>% 
   addSrcCol(study_acc) %>%
-  distinct()
-
-#study_metadata2 <- study_metadata %>%
-#  filter(src != "SRA" | (src=="SRA" & data_type=="rnaseq"))
-
-# unique id = study/organism 
-#study_metadata2 %>% distinct(study_acc, organism) %>% nrow() == nrow(study_metadata)
-
+  distinct() 
 
 
 # put together sample/study mapping
@@ -105,55 +94,25 @@ sample_to_study <- base_df %>%
              data_type=data_type)
   }) %>%
   bind_rows() %>% 
-  filter(!is.na(sample_acc)) %>%
-  addSrcCol(sample_acc)
-
-#sample_to_study2 <- sample_to_study %>%
-#  filter(src != "SRA" | (src=="SRA" & data_type=="rnaseq")) 
-
-# row id: sample, study, organism
-#stopifnot(sample_to_study2 %>% distinct(sample_acc, study_acc, organism) %>% nrow()==nrow(sample_to_study2))
+  filter(!is.na(sample_acc))  %>%
+  mutate(sample_acc=str_trim(sample_acc))
 # ------------------------------------------------------- #
 
-
-
-
-# NEXT: REMOVE 1281 scRNA-seq data studies
-to_remove <- study_metadata %>% 
+# NEXT: label potential scRNA-seq data studies
+study_metadata2 <- study_metadata %>% 
   mutate(across(c(title, description), tolower)) %>%
-  filter(str_detect(title, "single cell|scrna") |
-         str_detect(description, "single cell|scrna")) %>%
-  distinct(study_acc)
-study_metadata2 <- study_metadata %>% anti_join(to_remove, by="study_acc")
-sample_to_remove <- sample_to_study %>% semi_join(to_remove, by="study_acc") %>% distinct(sample_acc)
-sample_to_study2 <- sample_to_study %>% anti_join(to_remove, by="study_acc")
-sample_metadata2 <- sample_metadata %>% anti_join(sample_to_remove, by="sample_acc") %>%
-  mutate(sample_acc=str_trim(sample_acc))
+  mutate(scrna=(str_detect(title, "single cell|scrna") |
+         str_detect(description, "single cell|scrna"))) # --> 1281 studies
 
-# filter map
-sample_to_study3 <- sample_to_study2 %>% 
-  semi_join(study_metadata2, by="study_acc") %>%
-  semi_join(sample_metadata2, by="sample_acc")
-
-study_metadata3 <- study_metadata2 %>%
-  semi_join(sample_to_study3, by="study_acc")
-
-# NEXT: REMOVE samples that aren't present
+scrna_likely <- sample_to_study %>% 
+  semi_join(study_metadata2 %>% filter(scrna), by="study_acc") %>% 
+  distinct(sample_acc) # 405,775 scrnaseq samples
+sample_metadata2 <- sample_metadata %>%
+  mutate(scrna=(sample_acc %in% scrna_likely$sample_acc))
 
 
 # ----- CLEAN UP PLATFORM DATA ---- #
-# ... platform metadata is weird for some samples --> re-extract
-# plat_list <- sample_metadata2 %>% 
-#   distinct(platform) %>%    
-#   mutate(full_str=platform) %>%
-#   mutate(platform=str_extract(platform, "(?<=\\().+(?=\\)$)")) %>%
-#   group_by(full_str) %>%
-#   mutate(platform=ifelse(
-#     str_detect(platform, "\\("), 
-#     str_split(platform, pattern="\\(")[[1]][[2]],
-#     platform)) %>%
-#   ungroup() 
-# plat_list %>% distinct(platform)%>% pull(platform) # 80, some weirdness tho
+
 
 geo_samples <- unique(sample_metadata2 %>% filter(src=="GEO") %>% pull(sample_acc))
 con <- dbConnect(SQLite(), "../GEOmetadb.sqlite")
@@ -220,8 +179,9 @@ gpl_info5 <- gpl_info4 %>%
   mutate(platform2=str_replace(platform2, "ref| ref", "")) %>%
   mutate(platform2=str_replace(platform2, "\\.0", ""))
 
-#gpl_info4 %>% distinct(platform2) %>% filter(str_detect(platform2, "miRNA|tiling"))
-missing_src <- gpl_info5 %>% filter(!str_detect(platform2, "illumina|affymetrix|sentrix|nanostring")) %>% pull(gpl)
+missing_src <- gpl_info5 %>% 
+  filter(!str_detect(platform2, "illumina|affymetrix|sentrix|nanostring")) %>% 
+  pull(gpl)
 gpl_extra <- dbGetQuery(con, sprintf("SELECT gpl, title, manufacturer FROM gpl WHERE gpl IN ('%s');", 
                                      paste(missing_src, collapse="','")))
 dbDisconnect(con)
@@ -272,7 +232,7 @@ sample_metadata_w_plat3 <- sample_metadata_w_plat2 %>%
 
 list_plat_final <- sample_metadata_w_plat3 %>% distinct(platform) %>% arrange(platform) 
 
-
+list_plat_final %>% pull(platform)
 
 
 #-------------- #
@@ -285,49 +245,61 @@ dup_samp <- sample_metadata_w_plat3 %>%
 #dup_samp %>% select(-data_type) %>% distinct() %>% filter(duplicated(sample_acc))
 # all of the duplicated are in BOTH microarray and RNA-seq
 
-sample_metadat4 <- sample_metadata_w_plat3 %>% 
+sample_metadata4 <- sample_metadata_w_plat3 %>% 
   semi_join(dup_samp %>% distinct(sample_acc)) %>%
               group_by(sample_acc) %>%
               summarize(data_type=paste(data_type, collapse=";"),
                         platform=unique(platform),
                         src=unique(src),
-                        organism=unique(organism)) %>%
+                        organism=unique(organism),
+                        scrna=any(scrna)) %>%
   bind_rows(sample_metadata_w_plat3 %>% 
               anti_join(dup_samp %>% distinct(sample_acc)))
 sample_metadata4 <- sample_metadata4 %>% ungroup() %>% mutate(sample_acc=str_trim(sample_acc))
 
-study_metadata4 <- study_metadata3 %>%  
+study_metadata3 <- study_metadata2 %>%  
   group_by(study_acc) %>%
   summarize(data_type=paste(data_type, collapse=";"),
             title=paste(unique(title), collapse=";"),
             description=paste(unique(description), collapse=";"),
-            date=paste(unique(date[date!=""]), collapse=";"),
+            date=paste(unique(date[date!="" & !is.na(date)]), collapse=";"),
             src=paste(unique(src),collapse=";"),
-            organism=paste(unique(organism), collapse=";"))
+            organism=paste(unique(organism), collapse=";"),
+            scrna=any(scrna))
 
 # check assumptions!
 stopifnot(length(unique(sample_metadata4$sample_acc))==nrow(sample_metadata4))
-stopifnot(length(setdiff(study_metadata4$study_acc, sample_to_study3$study_acc))==0)
-stopifnot(length(setdiff(sample_metadata4$sample_acc, sample_to_study3$sample_acc))==0)
-stopifnot((study_metadata4 %>% distinct(study_acc) %>% nrow())==nrow(study_metadata4))
+stopifnot((study_metadata3 %>% distinct(study_acc) %>% nrow())==nrow(study_metadata3))
+
+
+# filter the rest
+sample_to_study2 <- sample_to_study %>% 
+  semi_join(study_metadata3, by="study_acc") %>%
+  semi_join(sample_metadata4, by="sample_acc")
+study_metadata4 <- study_metadata3 %>% semi_join(sample_to_study2, by="study_acc")
+print(nrow(study_metadata3))
+print(nrow(study_metadata4))
+sample_metadata5 <- sample_metadata4 %>% semi_join(sample_to_study2, by="sample_acc")
+print(nrow(sample_metadata4))
+print(nrow(sample_metadata5))
+
+stopifnot(length(setdiff(study_metadata4$study_acc, sample_to_study2$study_acc))==0)
+stopifnot(length(setdiff(sample_metadata5$sample_acc, sample_to_study2$sample_acc))==0)
 
 # write it out
 list_plat_final %>% 
   write_csv("data/01_sample_lists/list_platforms.csv")
 
-sample_metadata4 %>%
+sample_metadata5 %>%
   write_csv("data/01_sample_lists/list_samples.csv")
 
 study_metadata4 %>%
   write_csv("data/01_sample_lists/list_studies.csv")
 
-sample_to_study3 %>%
+sample_to_study2 %>%
   write_csv("data/01_sample_lists/sample_to_study.csv")
 
 # TODO: remove mirna + tiling platforms?
-
-
-# ---- FILTER BY PRESENT + RC ---- #
 
 
 # ---- patch missing metadata? ---- #
@@ -335,3 +307,5 @@ sample_to_study3 %>%
 # TODO - grab date for 401 studies missing this info :/ 
 # what ENA metadata do we need to download?
 # -- run this
+
+# what sample metadata are we missing?

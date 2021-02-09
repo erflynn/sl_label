@@ -161,7 +161,7 @@ tukiainen2 <- tukiainen %>%
   mutate(across(everything(), ~ifelse(.=="na", NA, .)))
 
 tukiainen2 %>%
-  write_csv("data/00_reference/genes/aggreg_mouse_escape.csv")
+  write_csv("data/00_reference/genes/aggreg_human_escape.csv")
 
 # To write out
 # gene id, gene, chr, location, region, xci, sex-bias, resource
